@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package fluxcache.proto;
+
+// WorkerEndpoint describes a Worker's network address for hash ring routing.
+message WorkerEndpoint {
+  uint64 worker_id = 1;
+  string host = 2;
+  uint32 port = 3;
+}
+
+// FileInfo holds file metadata for Phase 1 read/write path.
+message FileInfo {
+  uint64 inode_id = 1;
+  uint64 size = 2;
+  uint64 block_size = 3;
+  int64 ufs_mtime_ms = 4;
+  bool is_directory = 5;
+}

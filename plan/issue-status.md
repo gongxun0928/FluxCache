@@ -54,10 +54,10 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
 | P1-01 | 项目脚手架与构建系统 | P1 | 无 | completed | | 2026-03-11 实现并验证 |
-| P1-16 | 核心类型定义 | P1 | P1-01 | created | | |
+| P1-16 | 核心类型定义 | P1 | P1-01 | completed | | 2026-03-11 实现并验证 |
 | P1-02 | 配置加载系统（YAML） | P1 | P1-01 | completed | | 2026-03-11 实现并验证 |
-| P1-11 | UFS 抽象层与 LocalFS 驱动 | P1 | P1-01 | created | | |
-| P1-03 | Phase 1 最小 RPC 契约 | P1 | P1-01, P1-16, P1-11 | created | | |
+| P1-11 | UFS 抽象层与 LocalFS 驱动 | P1 | P1-01 | completed | | 2026-03-11 实现并验证 |
+| P1-03 | Phase 1 最小 RPC 契约 | P1 | P1-01, P1-16, P1-11 | completed | | 2026-03-11 实现并验证 |
 | P1-04 | ChannelPool 最小实现 | P1 | P1-03 | created | | |
 
 ## Phase B：元数据面闭环

@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package fluxcache.proto;
+
+import "common.proto";
+
+// MasterService provides file metadata and cluster topology to clients.
+service MasterService {
+  rpc GetFileInfo(GetFileInfoRequest) returns (GetFileInfoResponse);
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  rpc CompleteFile(CompleteFileRequest) returns (CompleteFileResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc Mount(MountRequest) returns (MountResponse);
+  rpc Unmount(UnmountRequest) returns (UnmountResponse);
+  rpc ListMounts(ListMountsRequest) returns (ListMountsResponse);
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc GetHashRing(GetHashRingRequest) returns (GetHashRingResponse);
+}
+
+message GetFileInfoRequest {
+  string path = 1;
+}
+
+message GetFileInfoResponse {
+  FileInfo file_info = 1;
+  uint64 ring_version = 2;
+  repeated WorkerEndpoint workers = 3;
+  string ufs_uri = 4;
+  string ufs_path = 5;
+}
+
+message CreateFileRequest {
+  string path = 1;
+}
+
+message CreateFileResponse {
+  FileInfo file_info = 1;
+  string ufs_uri = 2;
+  string ufs_path = 3;
+}
+
+message CompleteFileRequest {
+  uint64 inode_id = 1;
+  uint64 size = 2;
+}
+
+message CompleteFileResponse {}
+
+message DeleteFileRequest {
+  string path = 1;
+}
+
+message DeleteFileResponse {}
+
+message MountRequest {
+  string path = 1;
+  string ufs_uri = 2;
+}
+
+message MountResponse {}
+
+message UnmountRequest {
+  string path = 1;
+}
+
+message UnmountResponse {}
+
+message ListMountsRequest {}
+
+message ListMountsResponse {
+  repeated string paths = 1;
+}
+
+message RegisterWorkerRequest {
+  WorkerEndpoint endpoint = 1;
+}
+
+message RegisterWorkerResponse {
+  uint64 worker_id = 1;
+}
+
+message GetHashRingRequest {}
+
+message GetHashRingResponse {
+  uint64 ring_version = 1;
+  repeated WorkerEndpoint workers = 2;
+}

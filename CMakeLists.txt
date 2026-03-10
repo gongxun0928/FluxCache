@@ -25,5 +25,11 @@ if(NOT yaml-cpp_FOUND)
   unset(CMAKE_POLICY_VERSION_MINIMUM)
 endif()
 
+# protobuf and gRPC for RPC contract (P1-03)
+# Requires: brew install grpc (macOS) or apt install libgrpc++-dev libprotobuf-dev (Linux)
+set(protobuf_MODULE_COMPATIBLE TRUE)
+find_package(Protobuf CONFIG REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
+
 add_subdirectory(src)
 add_subdirectory(tests)
