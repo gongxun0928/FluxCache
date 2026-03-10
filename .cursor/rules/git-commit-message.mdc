@@ -1,7 +1,7 @@
 ---
-description: Git commit message must be in English (only applies when editing commit message)
-globs: [".git/COMMIT_EDITMSG"]
-alwaysApply: false
+description: Git commit message must be in English; apply when writing or editing any commit message
+globs: [".git/COMMIT_EDITMSG", "**/.git/COMMIT_EDITMSG"]
+alwaysApply: true
 ---
 
 # Commit Message

@@ -1,0 +1,23 @@
+---
+description: Git 分支与合并操作约束，保持主干线性历史
+globs: [".git/**", "**/.git/**"]
+alwaysApply: false
+---
+
+# Git 操作约束
+
+## 合并到主干（main）
+
+- **优先使用 rebase，避免产生 merge 分叉**：将待合入提交 rebase 到主干后再快进（fast-forward）主干，保持线性历史。
+- 操作顺序建议：
+  1. 在功能分支上 `git rebase main`；
+  2. 切回 `main`，`git merge <功能分支>`（此时应为快进，无 merge 提交）。
+- 若已误用 `git merge` 产生分叉：可 `git reset --hard HEAD~1` 撤销该 merge，再用上述 rebase + 快进重做。
+
+## 提交信息
+
+- 遵循 `git-commit-message.mdc`：英文、祈使句、可选用 conventional commits 格式。
+
+## 共享分支
+
+- 禁止对已推送的共享分支（如 `origin/main`）使用 `force-push`，除非团队明确约定并通知协作方。
