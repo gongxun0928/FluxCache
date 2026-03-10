@@ -74,7 +74,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P1-06 | Worker 进程骨架与心跳 | P1 | P1-02, P1-03, P1-16 | created | | |
+| P1-06 | Worker 进程骨架与心跳 | P1 | P1-02, P1-03, P1-16 | completed | | 2026-03-11 实现并验证 |
 | P1-09 | Memory Tier 基础能力 | P1 | P1-06 | created | | |
 | P1-10 | PageStore 最小实现 | P1 | P1-09, P1-16 | created | | |
 | P1-07 | Client RPC 封装与本地路由缓存骨架 | P1 | P1-02, P1-04, P1-16 | created | | |

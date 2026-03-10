@@ -1,10 +1,18 @@
 #include "master/master_service_impl.h"
 #include "common/status.h"
+#include <chrono>
 #include <grpcpp/grpcpp.h>
+#include <optional>
 
 namespace fluxcache {
 
 namespace {
+
+int64_t NowMs() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
 
 ::grpc::StatusCode ToGrpcCode(StatusCode c) {
   switch (c) {
@@ -23,6 +31,11 @@ namespace {
 
 }  // namespace
 
+MasterServiceImpl::MasterServiceImpl()
+    : hash_ring_manager_([this](WorkerId id) {
+        return worker_manager_.GetWorkerState(id);
+      }) {}
+
 ::grpc::Status MasterServiceImpl::ToGrpcStatus(const Status& s) {
   if (s.ok()) return ::grpc::Status::OK;
   return ::grpc::Status(ToGrpcCode(s.code()), s.message());
@@ -32,13 +45,23 @@ namespace {
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::GetHashRingRequest* /*request*/,
     ::fluxcache::proto::GetHashRingResponse* response) {
-  response->set_ring_version(0);
-  {
-    std::lock_guard<std::mutex> lock(workers_mu_);
-    response->clear_workers();
-    for (const auto& w : workers_) {
-      *response->add_workers() = w;
-    }
+  auto snap = hash_ring_manager_.GetRingSnapshot(
+      [this](WorkerId id) -> std::optional<WorkerEndpointInfo> {
+        auto info = worker_manager_.GetWorker(id);
+        if (!info) return std::nullopt;
+        WorkerEndpointInfo ep;
+        ep.worker_id = info->worker_id;
+        ep.host = info->host;
+        ep.port = info->port;
+        return ep;
+      });
+  response->set_ring_version(snap.ring_version);
+  response->clear_workers();
+  for (const auto& w : snap.workers) {
+    auto* ep = response->add_workers();
+    ep->set_worker_id(w.worker_id);
+    ep->set_host(w.host);
+    ep->set_port(w.port);
   }
   return ::grpc::Status::OK;
 }
@@ -61,16 +84,23 @@ namespace {
                           "RegisterWorker: endpoint.port is required");
   }
 
-  uint64_t worker_id;
-  {
-    std::lock_guard<std::mutex> lock(workers_mu_);
-    worker_id = next_worker_id_++;
-    proto::WorkerEndpoint registered;
-    registered.set_worker_id(worker_id);
-    registered.set_host(ep.host());
-    registered.set_port(ep.port());
-    workers_.push_back(registered);
+  int64_t now_ms = NowMs();
+
+  if (ep.worker_id() > 0) {
+    bool existing = worker_manager_.RegisterWorker(
+        ep.worker_id(), ep.host(), static_cast<uint16_t>(ep.port()), now_ms);
+    if (existing) {
+      response->set_worker_id(ep.worker_id());
+      return ::grpc::Status::OK;
+    }
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "RegisterWorker: worker_id not found");
   }
+
+  uint64_t worker_id = next_worker_id_++;
+  worker_manager_.RegisterWorker(worker_id, ep.host(),
+                                static_cast<uint16_t>(ep.port()), now_ms);
+  hash_ring_manager_.AddWorker(worker_id);
 
   response->set_worker_id(worker_id);
   return ::grpc::Status::OK;
@@ -143,6 +173,15 @@ namespace {
     response->add_paths(p);
   }
   return ::grpc::Status::OK;
+}
+
+void MasterServiceImpl::CheckWorkerHealthAndUpdateRing(
+    int64_t now_ms, int64_t heartbeat_timeout_ms, int64_t suspect_grace_ms) {
+  auto newly_dead = worker_manager_.CheckWorkerHealth(
+      now_ms, heartbeat_timeout_ms, suspect_grace_ms);
+  for (WorkerId wid : newly_dead) {
+    hash_ring_manager_.RemoveWorker(wid);
+  }
 }
 
 }  // namespace fluxcache
