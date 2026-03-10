@@ -42,6 +42,48 @@ Status RequireUint16(const YAML::Node& node, const std::string& path,
   }
 }
 
+void OptionalString(const YAML::Node& node, const std::string& default_val,
+                    std::string* out) {
+  if (node && node.IsDefined() && node.IsScalar()) {
+    try {
+      *out = node.as<std::string>();
+      return;
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
+void OptionalUint16(const YAML::Node& node, uint16_t default_val,
+                    uint16_t* out) {
+  if (node && node.IsDefined()) {
+    try {
+      int val = node.as<int>();
+      if (val >= 0 && val <= 65535) {
+        *out = static_cast<uint16_t>(val);
+        return;
+      }
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
+void OptionalUint32(const YAML::Node& node, uint32_t default_val,
+                    uint32_t* out) {
+  if (node && node.IsDefined()) {
+    try {
+      int val = node.as<int>();
+      if (val >= 0) {
+        *out = static_cast<uint32_t>(val);
+        return;
+      }
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
 }  // namespace
 
 StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
@@ -80,6 +122,7 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
       !s.ok()) {
     return s;
   }
+  OptionalString(master["db_path"], "./fluxcache_meta", &cfg.master.db_path);
 
   // worker
   YAML::Node worker = fluxcache["worker"];
@@ -91,6 +134,10 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
       !s.ok()) {
     return s;
   }
+  OptionalString(worker["host"], "0.0.0.0", &cfg.worker.host);
+  OptionalUint16(worker["port"], 0, &cfg.worker.port);
+  OptionalUint32(worker["heartbeat_interval_ms"], 5000,
+                 &cfg.worker.heartbeat_interval_ms);
 
   // client
   YAML::Node client = fluxcache["client"];

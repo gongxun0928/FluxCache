@@ -31,5 +31,29 @@ set(protobuf_MODULE_COMPATIBLE TRUE)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 
+# RocksDB for InodeStore persistence (P1-05B)
+# Prefer system-installed (e.g. brew install rocksdb)
+set(FLUXCACHE_ROCKSDB_TARGET "rocksdb")
+find_package(RocksDB CONFIG QUIET)
+if(RocksDB_FOUND)
+  set(FLUXCACHE_ROCKSDB_TARGET "RocksDB::rocksdb")
+else()
+  include(FetchContent)
+  FetchContent_Declare(
+    rocksdb
+    GIT_REPOSITORY https://github.com/facebook/rocksdb.git
+    GIT_TAG v9.0.0
+    GIT_SHALLOW TRUE
+  )
+  set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
+  set(WITH_SNAPPY OFF CACHE BOOL "" FORCE)
+  set(WITH_LZ4 OFF CACHE BOOL "" FORCE)
+  set(WITH_ZLIB OFF CACHE BOOL "" FORCE)
+  set(WITH_ZSTD OFF CACHE BOOL "" FORCE)
+  set(WITH_JEMALLOC OFF CACHE BOOL "" FORCE)
+  set(ROCKSDB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(rocksdb)
+endif()
+
 add_subdirectory(src)
 add_subdirectory(tests)

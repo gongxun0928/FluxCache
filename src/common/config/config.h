@@ -10,10 +10,14 @@ namespace fluxcache {
 struct MasterConfig {
   std::string host;
   uint16_t port = 0;
+  std::string db_path = "./fluxcache_meta";  // RocksDB path for InodeStore
 };
 
 struct WorkerConfig {
   std::string data_dir;
+  std::string host = "0.0.0.0";
+  uint16_t port = 0;
+  uint32_t heartbeat_interval_ms = 5000;
 };
 
 struct ClientConfig {

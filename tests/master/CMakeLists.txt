@@ -5,3 +5,11 @@ add_test(NAME master_test COMMAND master_test)
 add_executable(mount_table_test mount_table_test.cpp)
 target_link_libraries(mount_table_test PRIVATE fluxcache_master fluxcache_proto GTest::gtest_main)
 add_test(NAME mount_table_test COMMAND mount_table_test)
+
+add_executable(inode_tree_test inode_tree_test.cpp)
+target_link_libraries(inode_tree_test PRIVATE fluxcache_master GTest::gtest_main)
+add_test(NAME inode_tree_test COMMAND inode_tree_test)
+
+add_executable(worker_manager_test worker_manager_test.cpp)
+target_link_libraries(worker_manager_test PRIVATE fluxcache_master fluxcache_proto GTest::gtest_main)
+add_test(NAME worker_manager_test COMMAND worker_manager_test)

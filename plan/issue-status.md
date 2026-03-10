@@ -65,7 +65,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
 | P1-05A | Master 进程启动与服务注册骨架 | P1 | P1-02, P1-03, P1-16 | completed | | 2026-03-11 实现并验证 |
-| P1-05B | InodeStore 与 InodeTree 最小持久化 | P1 | P1-05A, P1-11 | created | | |
+| P1-05B | InodeStore 与 InodeTree 最小持久化 | P1 | P1-05A, P1-11 | completed | | 2026-03-11 |
 | P1-05C | WorkerManager 与 HashRingManager 最小实现 | P1 | P1-05A, P1-16 | created | | |
 | P1-08A | MountTable 核心映射与 RPC | P1 | P1-05A, P1-11 | completed | | 2026-03-11 实现并验证 |
 | P1-08B | SyncFromUfs 与 Unmount 安全规则 | P1 | P1-05B, P1-08A, P1-11 | created | | |
