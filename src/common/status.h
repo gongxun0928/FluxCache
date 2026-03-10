@@ -10,6 +10,8 @@ enum class StatusCode : uint8_t {
   kNotFound,
   kIOError,
   kInvalidArgument,
+  kResourceExhausted,
+  kUnavailable,
 };
 
 class Status {
@@ -18,6 +20,8 @@ class Status {
   static Status NotFound(const char* msg = nullptr);
   static Status IOError(const char* msg = nullptr);
   static Status InvalidArgument(const char* msg = nullptr);
+  static Status Unavailable(const char* msg = nullptr);
+  static Status ResourceExhausted(const char* msg = nullptr);
 
   bool ok() const { return code_ == StatusCode::kOk; }
   StatusCode code() const { return code_; }

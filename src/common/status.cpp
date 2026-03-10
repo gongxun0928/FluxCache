@@ -17,4 +17,13 @@ Status Status::InvalidArgument(const char* msg) {
   return Status(StatusCode::kInvalidArgument, msg ? msg : "invalid argument");
 }
 
+Status Status::ResourceExhausted(const char* msg) {
+  return Status(StatusCode::kResourceExhausted,
+                msg ? msg : "resource exhausted");
+}
+
+Status Status::Unavailable(const char* msg) {
+  return Status(StatusCode::kUnavailable, msg ? msg : "service unavailable");
+}
+
 }  // namespace fluxcache

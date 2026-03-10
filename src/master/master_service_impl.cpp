@@ -24,6 +24,8 @@ int64_t NowMs() {
       return ::grpc::StatusCode::INVALID_ARGUMENT;
     case StatusCode::kIOError:
       return ::grpc::StatusCode::INTERNAL;
+    case StatusCode::kResourceExhausted:
+      return ::grpc::StatusCode::RESOURCE_EXHAUSTED;
     default:
       return ::grpc::StatusCode::UNKNOWN;
   }
