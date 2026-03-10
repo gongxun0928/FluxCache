@@ -3,16 +3,19 @@
 #include "common/status.h"
 #include "master.grpc.pb.h"
 #include "master/hash_ring_manager.h"
+#include "master/inode_tree.h"
 #include "master/mount_table.h"
+#include "master/path_resolver.h"
 #include "master/worker_manager.h"
 #include <atomic>
+#include <memory>
 
 namespace fluxcache {
 
 // MasterService implementation with WorkerManager and HashRingManager (P1-05C).
 class MasterServiceImpl : public proto::MasterService::Service {
  public:
-  MasterServiceImpl();
+  explicit MasterServiceImpl(InodeTree* inode_tree = nullptr);
 
   ::grpc::Status GetHashRing(::grpc::ServerContext* context,
                              const ::fluxcache::proto::GetHashRingRequest* request,
@@ -52,6 +55,8 @@ class MasterServiceImpl : public proto::MasterService::Service {
  private:
   static ::grpc::Status ToGrpcStatus(const Status& s);
 
+  InodeTree* inode_tree_;
+  PathResolver path_resolver_;
   std::atomic<uint64_t> next_worker_id_{1};
   WorkerManager worker_manager_;
   HashRingManager hash_ring_manager_;

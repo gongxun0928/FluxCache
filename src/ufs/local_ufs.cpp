@@ -48,7 +48,10 @@ bool LocalUFS::IsPathUnderRoot(const std::string& resolved) const {
   }
   std::string root_s = root_canonical.string();
   if (!root_s.empty() && root_s.back() != '/') root_s += '/';
-  return resolved == root_s ||
+  std::string root_no_slash =
+      (root_s.size() > 1 && root_s.back() == '/') ? root_s.substr(0, root_s.size() - 1)
+                                                   : root_s;
+  return resolved == root_s || resolved == root_no_slash ||
          (resolved.size() > root_s.size() &&
           resolved.compare(0, root_s.size(), root_s) == 0);
 }

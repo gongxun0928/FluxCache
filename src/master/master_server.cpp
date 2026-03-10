@@ -7,7 +7,7 @@ namespace fluxcache {
 
 MasterServer::MasterServer(const MasterConfig& config) : config_(config) {
   inode_tree_ = std::make_unique<InodeTree>(config_.db_path);
-  service_impl_ = std::make_unique<MasterServiceImpl>();
+  service_impl_ = std::make_unique<MasterServiceImpl>(inode_tree_.get());
 }
 
 MasterServer::~MasterServer() {

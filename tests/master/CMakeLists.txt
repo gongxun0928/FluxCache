@@ -13,3 +13,7 @@ add_test(NAME inode_tree_test COMMAND inode_tree_test)
 add_executable(worker_manager_test worker_manager_test.cpp)
 target_link_libraries(worker_manager_test PRIVATE fluxcache_master fluxcache_proto GTest::gtest_main)
 add_test(NAME worker_manager_test COMMAND worker_manager_test)
+
+add_executable(sync_from_ufs_test sync_from_ufs_test.cpp)
+target_link_libraries(sync_from_ufs_test PRIVATE fluxcache_master fluxcache_proto fluxcache_ufs GTest::gtest_main)
+add_test(NAME sync_from_ufs_test COMMAND sync_from_ufs_test)

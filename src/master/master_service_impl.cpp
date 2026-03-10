@@ -33,8 +33,10 @@ int64_t NowMs() {
 
 }  // namespace
 
-MasterServiceImpl::MasterServiceImpl()
-    : hash_ring_manager_([this](WorkerId id) {
+MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
+    : inode_tree_(inode_tree),
+      path_resolver_(inode_tree, &mount_table_),
+      hash_ring_manager_([this](WorkerId id) {
         return worker_manager_.GetWorkerState(id);
       }) {}
 
@@ -110,9 +112,65 @@ MasterServiceImpl::MasterServiceImpl()
 
 ::grpc::Status MasterServiceImpl::GetFileInfo(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::GetFileInfoRequest* /*request*/,
-    ::fluxcache::proto::GetFileInfoResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "GetFileInfo not implemented");
+    const ::fluxcache::proto::GetFileInfoRequest* request,
+    ::fluxcache::proto::GetFileInfoResponse* response) {
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "GetFileInfo: path is required");
+  }
+  if (!response) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL, "null response");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "GetFileInfo: InodeTree not ready");
+  }
+
+  auto inode_id = path_resolver_.ResolveOrSync(request->path());
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "GetFileInfo: path not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "GetFileInfo: inode not found");
+  }
+
+  std::string ufs_uri, ufs_path;
+  Status s = mount_table_.Resolve(request->path(), &ufs_uri, &ufs_path);
+  if (!s.ok()) {
+    return ToGrpcStatus(s);
+  }
+
+  auto snap = hash_ring_manager_.GetRingSnapshot(
+      [this](WorkerId id) -> std::optional<WorkerEndpointInfo> {
+        auto info = worker_manager_.GetWorker(id);
+        if (!info) return std::nullopt;
+        WorkerEndpointInfo ep;
+        ep.worker_id = info->worker_id;
+        ep.host = info->host;
+        ep.port = info->port;
+        return ep;
+      });
+
+  auto* fi = response->mutable_file_info();
+  fi->set_inode_id(*inode_id);
+  fi->set_size(entry->size);
+  fi->set_block_size(entry->block_size);
+  fi->set_ufs_mtime_ms(entry->modification_time_ms);
+  fi->set_is_directory(entry->is_directory());
+  response->set_ring_version(snap.ring_version);
+  response->set_ufs_uri(ufs_uri);
+  response->set_ufs_path(ufs_path);
+  for (const auto& w : snap.workers) {
+    auto* ep = response->add_workers();
+    ep->set_worker_id(w.worker_id);
+    ep->set_host(w.host);
+    ep->set_port(w.port);
+  }
+  return ::grpc::Status::OK;
 }
 
 ::grpc::Status MasterServiceImpl::CreateFile(
@@ -159,6 +217,10 @@ MasterServiceImpl::MasterServiceImpl()
   if (!request || request->path().empty()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "Unmount: path is required");
+  }
+  if (inode_tree_ && inode_tree_->HasInodesUnderPath(request->path())) {
+    return ::grpc::Status(::grpc::StatusCode::FAILED_PRECONDITION,
+                          "Unmount: mount point has active inodes or discovered children");
   }
   Status s = mount_table_.Unmount(request->path());
   return ToGrpcStatus(s);
