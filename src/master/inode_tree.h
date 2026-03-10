@@ -38,7 +38,7 @@ class InodeTree {
 
   // Path lookup: returns inode_id if path exists, nullopt otherwise.
   // Path must be absolute (start with /).
-  std::optional<InodeId> LookupPath(const std::string& path);
+  std::optional<InodeId> LookupPath(const std::string& path) const;
 
   // Create file at path. Parent directory must exist.
   // Returns inode_id on success, nullopt on failure (e.g. parent missing, already exists).
@@ -58,6 +58,10 @@ class InodeTree {
   // Get inode entry for path (for FileInfo).
   std::optional<InodeEntry> GetInode(InodeId id);
 
+  // Returns true if any inode exists whose logical path equals prefix or is
+  // under prefix (e.g. /data or /data/file). Used for Unmount safety check.
+  bool HasInodesUnderPath(const std::string& prefix) const;
+
  private:
   std::string db_path_;
   std::unique_ptr<InodeStore> store_;
@@ -71,7 +75,7 @@ class InodeTree {
 
   bool InitRoot();
   bool Recover();
-  std::vector<std::string> SplitPath(const std::string& path);
+  std::vector<std::string> SplitPath(const std::string& path) const;
   DirNode* GetDirNode(InodeId id);
   const DirNode* GetDirNode(InodeId id) const;
 };

@@ -94,7 +94,7 @@ bool InodeTree::Recover() {
   return true;
 }
 
-std::vector<std::string> InodeTree::SplitPath(const std::string& path) {
+std::vector<std::string> InodeTree::SplitPath(const std::string& path) const {
   std::vector<std::string> parts;
   if (path.empty() || path[0] != '/') return parts;
   std::string p = path;
@@ -118,7 +118,7 @@ const DirNode* InodeTree::GetDirNode(InodeId id) const {
   return it != dirs_.end() ? &it->second : nullptr;
 }
 
-std::optional<InodeId> InodeTree::LookupPath(const std::string& path) {
+std::optional<InodeId> InodeTree::LookupPath(const std::string& path) const {
   std::shared_lock lock(mu_);
   if (!ready_) return std::nullopt;
 
@@ -286,6 +286,10 @@ std::optional<InodeEntry> InodeTree::GetInode(InodeId id) {
   std::shared_lock lock(mu_);
   if (!ready_) return std::nullopt;
   return store_->GetInode(id);
+}
+
+bool InodeTree::HasInodesUnderPath(const std::string& prefix) const {
+  return LookupPath(prefix).has_value();
 }
 
 }  // namespace fluxcache
