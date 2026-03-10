@@ -1,0 +1,6 @@
+add_subdirectory(common)
+add_subdirectory(proto)
+add_subdirectory(ufs)
+add_subdirectory(master)
+add_subdirectory(worker)
+add_subdirectory(client)

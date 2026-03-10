@@ -53,7 +53,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P1-01 | 项目脚手架与构建系统 | P1 | 无 | created | | |
+| P1-01 | 项目脚手架与构建系统 | P1 | 无 | completed | | 2026-03-11 实现并验证 |
 | P1-16 | 核心类型定义 | P1 | P1-01 | created | | |
 | P1-02 | 配置加载系统（YAML） | P1 | P1-01 | created | | |
 | P1-11 | UFS 抽象层与 LocalFS 驱动 | P1 | P1-01 | created | | |

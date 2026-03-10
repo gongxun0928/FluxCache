@@ -1,3 +1,5 @@
+build
+
 # Prerequisites
 *.d
 
@@ -39,3 +41,7 @@
 
 # debug information files
 *.dwo
+
+# Per-issue plan/todo (process artifacts; keep plan/issue-status.md and plan_fluxcache-feature-roadmap.md)
+plan/plan_*.md
+plan/todo-*.md
