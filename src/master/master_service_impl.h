@@ -1,6 +1,8 @@
 #pragma once
 
+#include "common/status.h"
 #include "master.grpc.pb.h"
+#include "master/mount_table.h"
 #include <atomic>
 #include <mutex>
 #include <vector>
@@ -9,7 +11,7 @@ namespace fluxcache {
 
 // Minimal implementation of MasterService for P1-05A bootstrap.
 // GetHashRing returns ring_version=0, workers=[]; RegisterWorker accepts
-// valid requests and returns worker_id; other RPCs return UNIMPLEMENTED.
+// valid requests and returns worker_id; Mount/Unmount/ListMounts wired (P1-08A).
 class MasterServiceImpl : public proto::MasterService::Service {
  public:
   MasterServiceImpl() = default;
@@ -46,9 +48,12 @@ class MasterServiceImpl : public proto::MasterService::Service {
                            ::fluxcache::proto::ListMountsResponse* response) override;
 
  private:
+  static ::grpc::Status ToGrpcStatus(const Status& s);
+
   std::atomic<uint64_t> next_worker_id_{1};
   std::mutex workers_mu_;
   std::vector<proto::WorkerEndpoint> workers_;
+  MountTable mount_table_;
 };
 
 }  // namespace fluxcache

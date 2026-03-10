@@ -1,7 +1,32 @@
 #include "master/master_service_impl.h"
+#include "common/status.h"
 #include <grpcpp/grpcpp.h>
 
 namespace fluxcache {
+
+namespace {
+
+::grpc::StatusCode ToGrpcCode(StatusCode c) {
+  switch (c) {
+    case StatusCode::kOk:
+      return ::grpc::StatusCode::OK;
+    case StatusCode::kNotFound:
+      return ::grpc::StatusCode::NOT_FOUND;
+    case StatusCode::kInvalidArgument:
+      return ::grpc::StatusCode::INVALID_ARGUMENT;
+    case StatusCode::kIOError:
+      return ::grpc::StatusCode::INTERNAL;
+    default:
+      return ::grpc::StatusCode::UNKNOWN;
+  }
+}
+
+}  // namespace
+
+::grpc::Status MasterServiceImpl::ToGrpcStatus(const Status& s) {
+  if (s.ok()) return ::grpc::Status::OK;
+  return ::grpc::Status(ToGrpcCode(s.code()), s.message());
+}
 
 ::grpc::Status MasterServiceImpl::GetHashRing(
     ::grpc::ServerContext* /*context*/,
@@ -81,23 +106,43 @@ namespace fluxcache {
 
 ::grpc::Status MasterServiceImpl::Mount(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::MountRequest* /*request*/,
+    const ::fluxcache::proto::MountRequest* request,
     ::fluxcache::proto::MountResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "Mount not implemented");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Mount: path is required");
+  }
+  if (request->ufs_uri().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Mount: ufs_uri is required");
+  }
+  Status s = mount_table_.Mount(request->path(), request->ufs_uri());
+  return ToGrpcStatus(s);
 }
 
 ::grpc::Status MasterServiceImpl::Unmount(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::UnmountRequest* /*request*/,
+    const ::fluxcache::proto::UnmountRequest* request,
     ::fluxcache::proto::UnmountResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "Unmount not implemented");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Unmount: path is required");
+  }
+  Status s = mount_table_.Unmount(request->path());
+  return ToGrpcStatus(s);
 }
 
 ::grpc::Status MasterServiceImpl::ListMounts(
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::ListMountsRequest* /*request*/,
-    ::fluxcache::proto::ListMountsResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "ListMounts not implemented");
+    ::fluxcache::proto::ListMountsResponse* response) {
+  if (!response) return ::grpc::Status(::grpc::StatusCode::INTERNAL, "null response");
+  auto paths = mount_table_.ListMounts();
+  response->clear_paths();
+  for (const auto& p : paths) {
+    response->add_paths(p);
+  }
+  return ::grpc::Status::OK;
 }
 
 }  // namespace fluxcache
