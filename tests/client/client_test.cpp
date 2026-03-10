@@ -182,4 +182,45 @@ TEST(ClientTest, StatusUnavailable) {
   EXPECT_EQ(s.message(), "test");
 }
 
+// -----------------------------------------------------------------------------
+// 无 Worker: GetWorkerForBlock returns NotFound when ring is empty
+// -----------------------------------------------------------------------------
+
+TEST(ClientTest, FluxCacheClientNoWorkerInRingReturnsNotFound) {
+  ClientConfig config;
+  config.master_host = "127.0.0.1";
+  config.master_port = 1;
+  FluxCacheClient client(config);
+
+  proto::GetHashRingResponse empty_resp;
+  empty_resp.set_ring_version(1);
+  // no workers added
+  client.SetRingForTest(empty_resp);
+
+  auto result = client.GetWorkerForBlock(1);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+  EXPECT_TRUE(result.status().message().find("no worker") != std::string::npos);
+}
+
+TEST(ClientTest, FluxCacheClientGetWorkerClientWorkerNotInRingReturnsNotFound) {
+  ClientConfig config;
+  config.master_host = "127.0.0.1";
+  config.master_port = 1;
+  FluxCacheClient client(config);
+
+  proto::GetHashRingResponse resp;
+  resp.set_ring_version(1);
+  auto* ep = resp.add_workers();
+  ep->set_worker_id(42);
+  ep->set_host("10.0.0.1");
+  ep->set_port(8080);
+  client.SetRingForTest(resp);
+
+  // worker_id 99 is not in ring (only 42 is)
+  auto result = client.GetWorkerClient(99);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+}
+
 }  // namespace fluxcache

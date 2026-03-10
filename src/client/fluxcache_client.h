@@ -29,6 +29,9 @@ class FluxCacheClient {
   MasterClient* GetMasterClient() { return master_client_.get(); }
   CachedHashRing* GetCachedHashRing() { return &cached_ring_; }
 
+  /// Test hook: inject ring without calling Master. For "no worker" acceptance.
+  void SetRingForTest(const proto::GetHashRingResponse& resp);
+
  private:
   std::string master_address_;
   ChannelPool pool_;

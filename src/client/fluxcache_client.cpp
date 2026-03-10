@@ -1,4 +1,5 @@
 #include "client/fluxcache_client.h"
+#include "master.pb.h"
 #include <sstream>
 
 namespace fluxcache {
@@ -51,6 +52,11 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
   }
 
   return std::make_unique<WorkerClient>(&pool_, addr, 10);
+}
+
+void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {
+  cached_ring_.Update(resp);
+  ring_fetched_ = true;
 }
 
 }  // namespace fluxcache
