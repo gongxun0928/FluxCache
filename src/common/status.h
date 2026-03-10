@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace fluxcache {
 
@@ -16,13 +17,16 @@ class Status {
   static Status OK() { return Status(StatusCode::kOk); }
   static Status NotFound(const char* msg = nullptr);
   static Status IOError(const char* msg = nullptr);
+  static Status InvalidArgument(const char* msg = nullptr);
 
   bool ok() const { return code_ == StatusCode::kOk; }
   StatusCode code() const { return code_; }
+  const std::string& message() const { return message_; }
 
  private:
-  explicit Status(StatusCode code) : code_(code) {}
+  Status(StatusCode code, const char* msg = nullptr);
   StatusCode code_;
+  std::string message_;
 };
 
 }  // namespace fluxcache

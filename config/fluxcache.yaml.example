@@ -1,0 +1,15 @@
+# FluxCache example config (Phase 1 MVP)
+# Copy to fluxcache.yaml and adjust paths.
+
+fluxcache:
+  master:
+    host: "127.0.0.1"
+    port: 9090
+  worker:
+    data_dir: "/tmp/fluxcache_worker"
+  client:
+    master_host: "127.0.0.1"
+    master_port: 9090
+  ufs:
+    type: "localfs"
+    path: "/tmp/fluxcache_ufs"
