@@ -1,0 +1,58 @@
+---
+description: Agent 全流程阶段门禁（design/plan/todo/coding/review/testing）
+alwaysApply: true
+---
+
+# Agent 全流程阶段门禁
+
+## 0. 通用约束
+
+- 禁止跳阶段：未满足前一阶段 Gate，不得进入下一阶段。
+- 每阶段必须输出最小证据：输入摘要、关键决策、风险与假设、验收结果。
+- 如遇歧义，先采用可回退默认值并说明假设；涉及不可逆操作再向用户确认。
+- 阶段失败后必须执行回退动作。
+- 变更分级与质量门统一遵循 `change-tiering-and-qg.mdc`。
+- Review 输出格式统一遵循 `review-evidence-checklist.mdc`。
+- Testing 执行命令与失败处理统一遵循 `testing-gate-no-deploy.mdc`。
+
+## 1. Design Gate
+
+- 输入：用户需求、任务卡、现有架构约束。
+- 输出：设计文档、风险与假设、验收标准、非目标。
+- 放行：目标/边界/接口影响明确，且包含正确性、可维护性、可验证性风险。
+- 回退：补充任务卡或影响分析后再进入 Plan。
+
+## 2. Plan Gate
+
+- 输入：Design 产物。
+- 输出：`plan/plan_<topic>.md`、执行顺序、文件路径、变更分级。
+- 放行：步骤可执行，依赖关系清晰，验证动作明确。
+- 回退：重写步骤或补充验证计划后再进入 Todo。
+
+## 3. Todo Gate
+
+- 输入：Plan 文档。
+- 输出：`plan/todo-*.md`、Todo 状态、每项 DoD。
+- 放行：Todo 覆盖 Plan，全程最多一个 `in_progress`，DoD 可验证。
+- 回退：按 Plan 回补 Todo，或将 DoD 改成可观测条件。
+
+## 4. Coding Gate
+
+- 输入：当前 `in_progress` todo 与相关代码约束。
+- 输出：代码改动、关键实现说明、必要测试。
+- 放行：实现可验证、范围不漂移、复杂逻辑有必要注释。
+- 回退：修复失败项，或回到 Plan/Todo 调整范围。
+
+## 5. Review Gate
+
+- 输入：代码改动、测试结果、评审证据。
+- 输出：评审结论、修订建议、闭环说明。
+- 放行：覆盖正确性/回归风险/测试充分性，高优问题已处理，输出满足 `review-evidence-checklist.mdc`。
+- 回退：补齐证据或修复高风险问题后重审。
+
+## 6. Testing Gate（不含部署）
+
+- 输入：已通过 Review 的改动与测试计划。
+- 输出：构建/测试/lint 结果、回归影响结论、最终报告。
+- 放行：已按分级质量门验证，结果可复现，失败项已修复或正式豁免。
+- 回退：按 `testing-gate-no-deploy.mdc` 修复重跑，或补齐豁免信息。

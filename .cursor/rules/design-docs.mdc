@@ -1,0 +1,33 @@
+---
+description: design/ 与 plan/ 目录下文档命名与分类约定，设计/Plan 任务必须遵循
+globs: ["design/**/*.md", "plan/**/*.md"]
+alwaysApply: true
+---
+
+# Design 与 Plan 文档命名规范
+
+## 目录分工
+
+| 目录 | 用途 |
+|------|------|
+| **design/** | 核心架构设计文档（*-design.md），描述设计决策与实现 |
+| **plan/** | Plan（plan_*.md）与 TODO（todo-*.md），执行计划与待办任务 |
+
+## 文档类型与命名
+
+| 类型 | 路径 | 命名格式 | 示例 |
+|------|------|----------|------|
+| **Design** | `design/` | `<主题>-design.md` 或 `<主题>.md` | `metadata-design.md`、`block-id-and-file-layout.md` |
+| **Plan** | `plan/` | `plan_<简述>.md` | `plan_client-standalone.md` |
+| **Todo** | `plan/` | `todo-<编号>-<简述>.md` | `todo-02-master-metadata-persistence.md` |
+
+## 何时用哪种
+
+- **Design**：写架构说明、设计决策、模块边界等纯设计内容时，保存到 `design/`。
+- **Plan**：用户意图含「设计」「重构」「优化架构」等，且任务复杂（涉及 3+ 模块、新接口、不兼容改动等），Agent 先出 Plan 等用户确认后再改代码时，保存到 `plan/plan_*.md`。
+- **Todo**：记录待办任务、分阶段实现计划时，保存到 `plan/todo-*.md`。
+
+## 与 Agents.md 的关系
+
+- Plan 的格式（Goal、Steps、Risks、To Confirm）见 `Agents.md` 的 Plan 流程。
+- 完成 Plan 对应代码后，在 Plan 文档中标记 `> Status: Done`。

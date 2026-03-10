@@ -1,0 +1,11 @@
+---
+description: 文档编写语言规范
+globs: ["design/**/*.md", "plan/**/*.md", "docs/**/*.md", "README*.md"]
+alwaysApply: false
+---
+
+# 文档语言规范
+
+- `design/` 与 `plan/` 下的设计类文档使用中英文两份，内容保持对齐。
+- `docs/` 与 `README*` 下的使用文档使用中英文两份，内容保持对齐。
+- 本规则只约束文档文件；代码注释风格遵循 `cpp-code-style.mdc`。

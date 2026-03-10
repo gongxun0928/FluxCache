@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "editor": {
+    "vimMode": false
+  },
+  "permissions": {
+    "allow": [
+      "Shell(cd)",
+      "Shell(cat)",
+      "Shell(ls)",
+      "Read",
+      "Write"
+    ],
+    "deny": []
+  },
+  "model": "gpt-5.3-codex"
+}

@@ -1,0 +1,11 @@
+---
+description: 设计任务时提示使用多 Agent 评审流程
+globs: ["design/**/*.md", "plan/**/*.md"]
+alwaysApply: false
+---
+
+# 设计评审提示
+
+当用户请求「设计」「技术方案」「架构设计」「设计 review」等复杂设计任务时，优先考虑使用 `multi-agent-design-review` Skill。
+
+执行方式与产出约定见 `.cursor/skills/multi-agent-design-review/SKILL.md`。

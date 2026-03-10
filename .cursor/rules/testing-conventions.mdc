@@ -1,0 +1,13 @@
+---
+description: 单元测试编写规范
+globs: "tests/**/*.cpp"
+alwaysApply: false
+---
+
+# 测试规范
+
+- 使用 Google Test (`gtest`)。
+- 测试文件命名为 `<module>_test.cpp`，放在 `tests/<module>/` 目录下。
+- 测试目录结构尽量镜像 `src/` 目录，每个测试文件对应一个源文件模块。
+- 文件系统相关测试使用临时目录，并在结束后清理。
+- 非致命断言使用 `EXPECT_*`，致命断言使用 `ASSERT_*`。

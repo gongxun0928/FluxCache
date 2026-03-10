@@ -1,0 +1,10 @@
+---
+description: Git commit message must be in English (only applies when editing commit message)
+globs: [".git/COMMIT_EDITMSG"]
+alwaysApply: false
+---
+
+# Commit Message
+
+- Use **English only** for the commit message (subject and body).
+- Follow conventional format: imperative subject line, optional body with details.
