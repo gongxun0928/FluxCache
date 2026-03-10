@@ -11,3 +11,4 @@ if(NOT GTest_FOUND)
 endif()
 
 add_subdirectory(common)
+add_subdirectory(ufs)
