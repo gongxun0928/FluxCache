@@ -32,11 +32,13 @@
    - 按 `stable-agent-delivery` 或标准开发流程完成设计、编码、测试、评审；
    - 根据用户要求决定是否提交 commit 或创建 PR。
 6. 完成一个 issue 后更新 `plan/issue-status.md` 与 `plan/active-batch.md`，再重新读取状态源，决定下一个可处理 issue。
+   - **阶段里程碑文档同步**：若完成的是阶段里程碑（该 Phase 下所有 issue 均为 `completed`），则必须同步更新 `README.md`、`README.zh-CN.md` 的 Status 小节；若有新增可运行组件或用法，须补充 Usage / 运行说明。
 7. 若所有待处理项都被阻塞，则输出阻塞摘要并等待用户决策；若批次完成，则输出批次结果摘要。
 
 ## 输出
 
 - 更新后的 `plan/issue-status.md`；
 - 更新后的 `plan/active-batch.md`（如适用）；
+- 若完成阶段里程碑：更新后的 `README.md`、`README.zh-CN.md`（Status 及必要时 Usage）；
 - 当前 issue 或批次的处理结果；
 - 阻塞项、下一步可处理项或最终完成摘要。
