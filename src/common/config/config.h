@@ -22,6 +22,8 @@ struct WorkerConfig {
   uint16_t port = 0;
   uint32_t heartbeat_interval_ms = 5000;
   uint16_t metrics_port = 0;  // 0 = disabled
+  /// Eviction policy: "lru" or "lfu". Default "lru".
+  std::string eviction_policy = "lru";
 };
 
 struct ClientConfig {
@@ -35,6 +37,10 @@ struct ClientConfig {
   int retry_max_attempts = 3;
   /// Initial delay between retries in ms. Default 50.
   int retry_initial_delay_ms = 50;
+  /// Enable L1 page cache. Default true.
+  bool local_cache_enabled = true;
+  /// L1 cache capacity in bytes. 0 = disabled. Default 256MB.
+  size_t local_cache_size_bytes = 256 * 1024 * 1024;
 };
 
 struct UfsConfig {

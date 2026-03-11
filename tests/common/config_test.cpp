@@ -154,6 +154,53 @@ fluxcache:
   EXPECT_EQ(result.value().client.retry_initial_delay_ms, 100);
 }
 
+TEST(ConfigTest, WorkerEvictionPolicyOptional) {
+  const char* yaml = R"(
+fluxcache:
+  master:
+    host: "127.0.0.1"
+    port: 9090
+  worker:
+    data_dir: "/tmp/fluxcache_worker"
+    eviction_policy: "lfu"
+  client:
+    master_host: "127.0.0.1"
+    master_port: 9090
+  ufs:
+    type: "localfs"
+    path: "/tmp/fluxcache_ufs"
+)";
+  std::string path = WriteTempYaml(yaml);
+  auto result = LoadConfig(path);
+  std::remove(path.c_str());
+
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result.value().worker.eviction_policy, "lfu");
+}
+
+TEST(ConfigTest, WorkerEvictionPolicyDefaultLru) {
+  const char* yaml = R"(
+fluxcache:
+  master:
+    host: "127.0.0.1"
+    port: 9090
+  worker:
+    data_dir: "/tmp/fluxcache_worker"
+  client:
+    master_host: "127.0.0.1"
+    master_port: 9090
+  ufs:
+    type: "localfs"
+    path: "/tmp/fluxcache_ufs"
+)";
+  std::string path = WriteTempYaml(yaml);
+  auto result = LoadConfig(path);
+  std::remove(path.c_str());
+
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result.value().worker.eviction_policy, "lru");
+}
+
 TEST(ConfigTest, UfsTypeNotLocalfs) {
   const char* yaml = R"(
 fluxcache:

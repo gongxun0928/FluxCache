@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/config/config.h"
+#include "worker/cache/eviction_policy.h"
 #include "worker/page/page_store.h"
 #include "worker/storage/tier_manager.h"
 #include <grpcpp/grpcpp.h>
@@ -32,6 +33,7 @@ class WorkerServer {
   WorkerConfig config_;
   std::unique_ptr<TierManager> tier_manager_;
   std::unique_ptr<class MetaStore> meta_store_;
+  std::unique_ptr<EvictionPolicy> eviction_policy_;
   std::unique_ptr<PageStore> page_store_;
   std::unique_ptr<MetricsRegistry> metrics_registry_;
   std::unique_ptr<WorkerServiceImpl> service_impl_;

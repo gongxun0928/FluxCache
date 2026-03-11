@@ -10,6 +10,7 @@ add_library(fluxcache_worker STATIC
   storage/tier_manager.cpp
   page/page_store.cpp
   cache/lru_policy.cpp
+  cache/lfu_policy.cpp
   cache/eviction_policy_factory.cpp
   cache/tier_promoter.cpp
   cache/tier_evictor.cpp

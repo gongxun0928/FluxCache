@@ -2,6 +2,7 @@
 #include "worker/worker_service_impl.h"
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
+#include "worker/cache/eviction_policy_factory.h"
 #include "worker/meta/meta_store.h"
 #include "worker/storage/memory_tier.h"
 #include "worker/storage/ssd_tier.h"
@@ -9,11 +10,21 @@
 
 namespace fluxcache {
 
+namespace {
+
+EvictionPolicyType ParseEvictionPolicyType(const std::string& s) {
+  if (s == "lfu") return EvictionPolicyType::kLFU;
+  return EvictionPolicyType::kLRU;  // default
+}
+
+}  // namespace
+
 WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
   tier_manager_ = std::make_unique<TierManager>();
   tier_manager_->AddTier(std::make_unique<MemoryTier>(256 * kPageSize));  // 256MB
 
   MetaStore* meta_ptr = nullptr;
+  EvictionPolicy* eviction_ptr = nullptr;
   if (!config_.data_dir.empty()) {
     tier_manager_->AddTier(std::make_unique<SsdTier>(
         config_.data_dir + "/ssd", kSsdCapacity));
@@ -23,11 +34,14 @@ WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
                                      : config_.metastore_path;
     if (meta_store_->Open(metastore_path)) {
       meta_ptr = meta_store_.get();
+      eviction_policy_ =
+          CreateEvictionPolicy(ParseEvictionPolicyType(config_.eviction_policy));
+      eviction_ptr = eviction_policy_.get();
     }
   }
 
   page_store_ = std::make_unique<PageStore>(tier_manager_.get(), kPageSize,
-                                           meta_ptr);
+                                           meta_ptr, eviction_ptr);
   if (meta_ptr) {
     page_store_->RecoverFromMetaStore();
   }

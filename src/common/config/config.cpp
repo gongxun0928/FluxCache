@@ -169,6 +169,7 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
   OptionalUint32(worker["heartbeat_interval_ms"], 5000,
                  &cfg.worker.heartbeat_interval_ms);
   OptionalUint16(worker["metrics_port"], 0, &cfg.worker.metrics_port);
+  OptionalString(worker["eviction_policy"], "lru", &cfg.worker.eviction_policy);
 
   // client
   YAML::Node client = fluxcache["client"];

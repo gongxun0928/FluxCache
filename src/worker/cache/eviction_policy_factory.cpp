@@ -1,4 +1,5 @@
 #include "worker/cache/eviction_policy_factory.h"
+#include "worker/cache/lfu_policy.h"
 #include "worker/cache/lru_policy.h"
 
 namespace fluxcache {
@@ -8,7 +9,7 @@ std::unique_ptr<EvictionPolicy> CreateEvictionPolicy(EvictionPolicyType type) {
     case EvictionPolicyType::kLRU:
       return std::make_unique<LruPolicy>();
     case EvictionPolicyType::kLFU:
-      return nullptr;  // P2-04
+      return std::make_unique<LfuPolicy>();
     default:
       return nullptr;
   }
