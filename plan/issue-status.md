@@ -129,7 +129,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P2-10 | HA Journal / Raft 设计 Spike | P1 | P1-05B, P1-08B, P1-15D | created | | |
+| P2-10 | HA Journal / Raft 设计 Spike | P1 | P1-05B, P1-08B, P1-15D | completed | | 2026-03-11 设计完成 |
 | P3-05 | 弹性配置层（超时 / 重试 / 熔断） | P1 | P2-08 | created | | |
 | P3-06 | 安全恢复与受限降级策略 | P0 | P2-05B, P3-05, P2-10 | created | | |
 
