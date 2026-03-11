@@ -27,10 +27,12 @@ class WorkerClient {
   /// @param resilience_config Timeouts per op type.
   /// @param retry_policy Retry policy for idempotent RPCs (ReadPages only).
   /// @param circuit_breaker Optional; if non-null and enabled, blocks when OPEN.
+  /// @param metrics Optional; for retry/breaker observability.
   WorkerClient(ChannelPool* pool, const std::string& worker_address,
                const ResilienceConfig& resilience_config,
                const RetryPolicy& retry_policy = RetryPolicy{},
-               CircuitBreaker* circuit_breaker = nullptr);
+               CircuitBreaker* circuit_breaker = nullptr,
+               class MetricsRegistry* metrics = nullptr);
 
   /// Read pages from Worker. Returns Unavailable on DEADLINE_EXCEEDED or
   /// UNAVAILABLE.
@@ -53,6 +55,7 @@ class WorkerClient {
   ResilienceConfig resilience_config_;
   RetryPolicy retry_policy_;
   CircuitBreaker* circuit_breaker_;
+  class MetricsRegistry* metrics_;
 };
 
 }  // namespace fluxcache

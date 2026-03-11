@@ -1,7 +1,8 @@
 #include "client/worker_client.h"
+#include "common/metrics/metrics_registry.h"
 #include "worker.grpc.pb.h"
-#include <grpcpp/client_context.h>
 #include <chrono>
+#include <grpcpp/client_context.h>
 
 namespace fluxcache {
 
@@ -9,12 +10,14 @@ WorkerClient::WorkerClient(ChannelPool* pool,
                           const std::string& worker_address,
                           const ResilienceConfig& resilience_config,
                           const RetryPolicy& retry_policy,
-                          CircuitBreaker* circuit_breaker)
+                          CircuitBreaker* circuit_breaker,
+                          MetricsRegistry* metrics)
     : pool_(pool),
       worker_address_(worker_address),
       resilience_config_(resilience_config),
       retry_policy_(retry_policy),
-      circuit_breaker_(circuit_breaker) {}
+      circuit_breaker_(circuit_breaker),
+      metrics_(metrics) {}
 
 namespace {
 
@@ -82,7 +85,7 @@ Status WorkerClient::ReadPages(const proto::ReadPagesRequest& request,
   p.is_idempotent = true;
   Status s = ExecuteWithRetry(p, [this, &request, response, deadline]() {
     return DoReadPages(pool_, worker_address_, deadline, request, response);
-  });
+  }, metrics_, "worker");
   if (circuit_breaker_) {
     s.ok() ? circuit_breaker_->RecordSuccess()
            : circuit_breaker_->RecordFailure();
@@ -102,7 +105,7 @@ Status WorkerClient::BatchReadPages(
   Status s = ExecuteWithRetry(p, [this, &request, response, deadline]() {
     return DoBatchReadPages(pool_, worker_address_, deadline, request,
                             response);
-  });
+  }, metrics_, "worker");
   if (circuit_breaker_) {
     s.ok() ? circuit_breaker_->RecordSuccess()
            : circuit_breaker_->RecordFailure();

@@ -30,6 +30,10 @@ class FakeUfs : public UFS {
   void SetWriteFail(bool fail) { write_fail_ = fail; }
   bool write_fail() const { return write_fail_; }
 
+  // Test-only: when true, Read() returns error. Used for degradation/fault injection.
+  void SetReadFail(bool fail) { read_fail_->store(fail); }
+  bool read_fail() const { return read_fail_->load(); }
+
   std::unique_ptr<UFS> Clone() const override;
 
   Status Read(const std::string& path, uint64_t offset, uint64_t size,
@@ -51,6 +55,8 @@ class FakeUfs : public UFS {
   std::shared_ptr<std::atomic<int64_t>> read_count_{
       std::make_shared<std::atomic<int64_t>>(0)};
   bool write_fail_{false};
+  std::shared_ptr<std::atomic<bool>> read_fail_{
+      std::make_shared<std::atomic<bool>>(false)};
 };
 
 }  // namespace fluxcache

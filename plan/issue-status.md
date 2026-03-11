@@ -131,7 +131,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 |---|---|---|---|---|---|---|
 | P2-10 | HA Journal / Raft 设计 Spike | P1 | P1-05B, P1-08B, P1-15D | completed | | 2026-03-11 设计完成 |
 | P3-05 | 弹性配置层（超时 / 重试 / 熔断） | P1 | P2-08 | completed | | 2026-03-11 实现并验证 |
-| P3-06 | 安全恢复与受限降级策略 | P0 | P2-05B, P3-05, P2-10 | created | | |
+| P3-06 | 安全恢复与受限降级策略 | P0 | P2-05B, P3-05, P2-10 | completed | | 2026-03-11 实现并验证 |
 
 ## Phase J：性能、可观测与质量
 
@@ -140,7 +140,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P1-13 | Metrics 基础导出 | P2 | P1-05A, P1-06 | completed | | 2026-03-11 实现并验证 |
 | P3-02 | PageStore 并发优化 | P1 | P1-10 | completed | | 2026-03-11 实现并验证 |
 | P3-03 | 批量 RPC 与顺序读 pipeline | P1 | P1-14D, P2-08 | completed | | 2026-03-11 实现并验证 |
-| P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | created | | |
+| P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | in_progress | | 设计+实现完成，待构建修复后验证 |
 | P3-08 | 可观测性指标扩展 | P2 | P1-13, P2-02, P3-05 | created | | |
 | P3-09 | 慢请求与热点页追踪 | P2 | P3-08 | created | | |
 | P3-07 | 缺陷治理与回归测试轨道 | P2 | P1-15D | completed | | 2026-03-11 实现并验证 |

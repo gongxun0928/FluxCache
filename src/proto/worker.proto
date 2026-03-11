@@ -22,6 +22,7 @@ message ReadPagesRequest {
 
 message ReadPagesResponse {
   bytes data = 1;
+  bool stale = 2;
 }
 
 message BatchReadPagesRequest {
@@ -30,6 +31,7 @@ message BatchReadPagesRequest {
 
 message BatchReadPagesResponse {
   repeated bytes block_data = 1;
+  repeated bool stale = 2;
 }
 
 message WritePagesRequest {

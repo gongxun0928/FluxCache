@@ -28,12 +28,16 @@ std::unique_ptr<UFS> FakeUfs::Clone() const {
   clone->content_ = content_;
   clone->read_count_ = read_count_;
   clone->write_fail_ = write_fail_;
+  clone->read_fail_ = read_fail_;
   return clone;
 }
 
 Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
                      std::string* out) {
   if (!out) return Status::InvalidArgument(nullptr);
+  if (read_fail_ && read_fail_->load()) {
+    return Status::IOError("FakeUfs: Read failed (injected)");
+  }
   auto it = content_->find(path);
   if (it == content_->end()) {
     return Status::NotFound("FakeUfs: no content for path");

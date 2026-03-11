@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfluxcache_client.a CMakeFiles/fluxcache_client.dir/cache/client_page_cache.cpp.o CMakeFiles/fluxcache_client.dir/cached_hash_ring.cpp.o CMakeFiles/fluxcache_client.dir/fluxcache_client.cpp.o CMakeFiles/fluxcache_client.dir/master_client.cpp.o CMakeFiles/fluxcache_client.dir/worker_client.cpp.o
+/usr/bin/ranlib libfluxcache_client.a

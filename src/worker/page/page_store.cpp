@@ -34,7 +34,7 @@ void PageStore::SyncMetaDelete(PageId id) {
 }
 
 Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
-                         std::string* out) {
+                         std::string* out, bool allow_keep_on_mismatch) {
   if (!out) return Status::InvalidArgument("null output");
 
   TierBlockHandle handle_copy;
@@ -51,7 +51,9 @@ Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
 
     const PageEntry& entry = it->second;
     if (entry.mtime_ms != expected_mtime_ms) {
-      // Mtime mismatch: release locks and delegate to DeletePage.
+      if (allow_keep_on_mismatch) {
+        return Status::NotFound("mtime mismatch, try UFS");
+      }
       st.unlock();
       rec.unlock();
       Status s = DeletePage(id);
@@ -61,6 +63,29 @@ Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
 
     handle_copy = entry.handle;
     mtime_copy = entry.mtime_ms;
+  }
+
+  Status s = tier_->Read(handle_copy, 0, page_size_, out);
+  if (s.ok() && eviction_policy_) {
+    eviction_policy_->OnAccess(id);
+  }
+  return s;
+}
+
+Status PageStore::GetPageRelaxed(PageId id, std::string* out) {
+  if (!out) return Status::InvalidArgument("null output");
+
+  TierBlockHandle handle_copy;
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::shared_lock<std::shared_mutex> st(stripe_locks_[si]);
+
+    auto it = page_index_.find(id);
+    if (it == page_index_.end()) {
+      return Status::NotFound("page not found");
+    }
+    handle_copy = it->second.handle;
   }
 
   Status s = tier_->Read(handle_copy, 0, page_size_, out);

@@ -48,13 +48,15 @@ WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
   if (config_.metrics_port > 0) {
     metrics_registry_ = std::make_unique<MetricsRegistry>();
     service_impl_ = std::make_unique<WorkerServiceImpl>(
-        page_store_.get(), kPageSize, kBlockSize, metrics_registry_.get());
+        page_store_.get(), kPageSize, kBlockSize, metrics_registry_.get(),
+        config_.allow_stale_read_on_ufs_timeout);
     http_metrics_server_ =
         std::make_unique<HttpMetricsServer>(config_.metrics_port,
                                             metrics_registry_.get());
   } else {
     service_impl_ = std::make_unique<WorkerServiceImpl>(
-        page_store_.get(), kPageSize, kBlockSize, nullptr);
+        page_store_.get(), kPageSize, kBlockSize, nullptr,
+        config_.allow_stale_read_on_ufs_timeout);
   }
 }
 

@@ -1,4 +1,5 @@
 #include "worker/cache/tier_evictor.h"
+#include "common/metrics/metrics_registry.h"
 #include "worker/cache/eviction_policy.h"
 #include "worker/meta/meta_store.h"
 #include "worker/page/page_store.h"
@@ -9,12 +10,13 @@ namespace fluxcache {
 TierEvictor::TierEvictor(PageStore* page_store, TierManager* tier_manager,
                          MetaStore* meta_store,
                          EvictionPolicy* eviction_policy,
-                         double high_watermark)
+                         double high_watermark, MetricsRegistry* metrics)
     : page_store_(page_store),
       tier_manager_(tier_manager),
       meta_store_(meta_store),
       eviction_policy_(eviction_policy),
-      high_watermark_(high_watermark) {}
+      high_watermark_(high_watermark),
+      metrics_(metrics) {}
 
 Status TierEvictor::EvictOne() {
   size_t used = tier_manager_->UsedCapacity();
@@ -40,21 +42,41 @@ Status TierEvictor::EvictOne() {
   if (current == TierType::kMemory) {
     StorageTier* ssd = tier_manager_->GetTier(TierType::kSSD);
     if (ssd && ssd->UsedCapacity() < ssd->CapacityLimit()) {
-      return page_store_->RelocatePage(*victim, TierType::kSSD);
+      Status s = page_store_->RelocatePage(*victim, TierType::kSSD);
+      if (s.ok() && metrics_) {
+        metrics_->IncCounter("fluxcache_evictions_total", "type", "demotion");
+      }
+      return s;
     }
-    return page_store_->DeletePage(*victim);
+    Status s = page_store_->DeletePage(*victim);
+    if (s.ok() && metrics_) {
+      metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
+    }
+    return s;
   }
 
   if (current == TierType::kSSD) {
     StorageTier* hdd = tier_manager_->GetTier(TierType::kHDD);
     if (hdd && hdd->UsedCapacity() < hdd->CapacityLimit()) {
-      return page_store_->RelocatePage(*victim, TierType::kHDD);
+      Status s = page_store_->RelocatePage(*victim, TierType::kHDD);
+      if (s.ok() && metrics_) {
+        metrics_->IncCounter("fluxcache_evictions_total", "type", "demotion");
+      }
+      return s;
     }
-    return page_store_->DeletePage(*victim);
+    Status s = page_store_->DeletePage(*victim);
+    if (s.ok() && metrics_) {
+      metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
+    }
+    return s;
   }
 
   // HDD: evict
-  return page_store_->DeletePage(*victim);
+  Status s = page_store_->DeletePage(*victim);
+  if (s.ok() && metrics_) {
+    metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
+  }
+  return s;
 }
 
 }  // namespace fluxcache

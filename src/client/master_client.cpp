@@ -1,19 +1,22 @@
 #include "client/master_client.h"
+#include "common/metrics/metrics_registry.h"
 #include "master.grpc.pb.h"
-#include <grpcpp/client_context.h>
 #include <chrono>
+#include <grpcpp/client_context.h>
 
 namespace fluxcache {
 
 MasterClient::MasterClient(ChannelPool* pool, const std::string& master_address,
                            const ResilienceConfig& resilience_config,
                            const RetryPolicy& retry_policy,
-                           CircuitBreaker* circuit_breaker)
+                           CircuitBreaker* circuit_breaker,
+                           MetricsRegistry* metrics)
     : pool_(pool),
       master_address_(master_address),
       resilience_config_(resilience_config),
       retry_policy_(retry_policy),
-      circuit_breaker_(circuit_breaker) {}
+      circuit_breaker_(circuit_breaker),
+      metrics_(metrics) {}
 
 namespace {
 
@@ -57,7 +60,8 @@ StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
   auto result = ExecuteWithRetry<proto::GetHashRingResponse>(
       p, [this, deadline]() {
         return DoGetHashRing(pool_, master_address_, deadline);
-      });
+      },
+      metrics_, "master");
   if (circuit_breaker_) {
     result.ok() ? circuit_breaker_->RecordSuccess()
                 : circuit_breaker_->RecordFailure();
@@ -113,7 +117,8 @@ StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
   auto result = ExecuteWithRetry<proto::GetFileInfoResponse>(
       p, [this, path, deadline]() {
         return DoGetFileInfo(pool_, master_address_, deadline, path);
-      });
+      },
+      metrics_, "master");
   if (circuit_breaker_) {
     result.ok() ? circuit_breaker_->RecordSuccess()
                 : circuit_breaker_->RecordFailure();

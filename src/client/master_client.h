@@ -14,6 +14,8 @@
 
 namespace fluxcache {
 
+class MetricsRegistry;
+
 /// Master RPC wrapper. All RPCs set deadline per op type; optional circuit breaker.
 class MasterClient {
  public:
@@ -22,10 +24,12 @@ class MasterClient {
   /// @param resilience_config Timeouts per op type.
   /// @param retry_policy Retry policy for idempotent RPCs (default: 3 retries).
   /// @param circuit_breaker Optional; if non-null and enabled, blocks when OPEN.
+  /// @param metrics Optional; for retry/breaker observability.
   MasterClient(ChannelPool* pool, const std::string& master_address,
                const ResilienceConfig& resilience_config,
                const RetryPolicy& retry_policy = RetryPolicy{},
-               CircuitBreaker* circuit_breaker = nullptr);
+               CircuitBreaker* circuit_breaker = nullptr,
+               MetricsRegistry* metrics = nullptr);
 
   /// Get hash ring from Master. Returns Unavailable on DEADLINE_EXCEEDED or
   /// UNAVAILABLE.
@@ -64,6 +68,7 @@ class MasterClient {
   ResilienceConfig resilience_config_;
   RetryPolicy retry_policy_;
   CircuitBreaker* circuit_breaker_;
+  MetricsRegistry* metrics_;
 };
 
 }  // namespace fluxcache

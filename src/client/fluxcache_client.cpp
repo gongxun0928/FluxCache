@@ -1,4 +1,6 @@
 #include "client/fluxcache_client.h"
+#include "common/metrics/http_metrics_server.h"
+#include "common/metrics/metrics_registry.h"
 #include "common/types.h"
 #include "master.pb.h"
 #include "worker.pb.h"
@@ -24,6 +26,14 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
                                   ? config.channel_pool_size
                                   : 4}),
       ring_fetched_(false) {
+  MetricsRegistry* metrics_ptr = nullptr;
+  if (config.metrics_port > 0) {
+    metrics_registry_ = std::make_unique<MetricsRegistry>();
+    metrics_ptr = metrics_registry_.get();
+    http_metrics_server_ = std::make_unique<HttpMetricsServer>(
+        config.metrics_port, metrics_registry_.get());
+    http_metrics_server_->Start();
+  }
   CircuitBreaker* master_cb = nullptr;
   if (config.circuit_breaker_enabled) {
     CircuitBreaker::Options opts;
@@ -36,15 +46,19 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
     opts.half_open_probes = config.circuit_breaker_half_open_probes > 0
                                 ? config.circuit_breaker_half_open_probes
                                 : 1;
+    opts.metrics = metrics_ptr;
     master_circuit_breaker_ = std::make_unique<CircuitBreaker>(opts);
     master_cb = master_circuit_breaker_.get();
   }
   master_client_ = std::make_unique<MasterClient>(
-      &pool_, master_address_, resilience_config_, retry_policy_, master_cb);
+      &pool_, master_address_, resilience_config_, retry_policy_, master_cb,
+      metrics_ptr);
   if (config.local_cache_enabled && config.local_cache_size_bytes > 0) {
     cache_ = std::make_unique<ClientPageCache>(config.local_cache_size_bytes);
   }
 }
+
+FluxCacheClient::~FluxCacheClient() = default;
 
 Status FluxCacheClient::RefreshRing() {
   auto result = master_client_->GetHashRing();
@@ -86,8 +100,10 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
   }
 
   CircuitBreaker* worker_cb = GetOrCreateWorkerCircuitBreaker(addr);
+  MetricsRegistry* metrics_ptr = metrics_registry_ ? metrics_registry_.get()
+                                                    : nullptr;
   return std::make_unique<WorkerClient>(&pool_, addr, resilience_config_,
-                                        retry_policy_, worker_cb);
+                                        retry_policy_, worker_cb, metrics_ptr);
 }
 
 CircuitBreaker* FluxCacheClient::GetOrCreateWorkerCircuitBreaker(
@@ -101,6 +117,7 @@ CircuitBreaker* FluxCacheClient::GetOrCreateWorkerCircuitBreaker(
   opts.failure_threshold = 5;
   opts.open_duration_ms = 30000;
   opts.half_open_probes = 1;
+  opts.metrics = metrics_registry_ ? metrics_registry_.get() : nullptr;
   auto cb = std::make_unique<CircuitBreaker>(opts);
   CircuitBreaker* ptr = cb.get();
   worker_circuit_breakers_[address] = std::move(cb);
@@ -113,7 +130,8 @@ void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {
 }
 
 StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
-                                            uint64_t offset, uint64_t size) {
+                                            uint64_t offset, uint64_t size,
+                                            bool* stale_out) {
   auto fi_result = master_client_->GetFileInfo(path);
   if (!fi_result.ok()) {
     return fi_result.status();
@@ -175,6 +193,7 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
   };
   std::vector<BlockReadState> blocks;
   blocks.reserve(last_block_idx - first_block_idx + 1);
+  bool any_stale = false;
 
   for (uint32_t bi = first_block_idx; bi <= last_block_idx; ++bi) {
     BlockId block_id = MakeBlockId(inode_id, bi);
@@ -241,6 +260,7 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
         }
         if (!s.ok()) return s;
       }
+      if (read_resp.stale()) any_stale = true;
       const std::string& data = read_resp.data();
       size_t pos = 0;
       for (uint32_t pi : st->missing_pages) {
@@ -277,6 +297,9 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
           }
         }
         if (!s.ok()) return s;
+      }
+      for (int i = 0; i < batch_resp.stale_size(); ++i) {
+        if (batch_resp.stale(i)) any_stale = true;
       }
       for (size_t i = 0; i < batch.size(); ++i) {
         auto* st = batch[i];
@@ -327,6 +350,7 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
     if (!s.ok()) return s;
   }
 
+  if (stale_out) *stale_out = any_stale;
   std::string result;
   for (const auto& st : blocks) {
     std::string assembled;

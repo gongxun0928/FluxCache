@@ -32,8 +32,12 @@ class PageStore {
                     EvictionPolicy* eviction_policy = nullptr);
 
   // GetPage: returns data if hit and expected_mtime matches; on mismatch
-  // deletes the stale page and returns NotFound.
-  Status GetPage(PageId id, int64_t expected_mtime_ms, std::string* out);
+  // deletes the stale page and returns NotFound, unless allow_keep_on_mismatch.
+  Status GetPage(PageId id, int64_t expected_mtime_ms, std::string* out,
+                 bool allow_keep_on_mismatch = false);
+
+  // GetPageRelaxed: returns data if page exists, regardless of mtime.
+  Status GetPageRelaxed(PageId id, std::string* out);
 
   // PutPage: writes page with mtime; returns ResourceExhausted when tier
   // capacity is insufficient.

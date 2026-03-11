@@ -24,6 +24,8 @@ struct WorkerConfig {
   uint16_t metrics_port = 0;  // 0 = disabled
   /// Eviction policy: "lru" or "lfu". Default "lru".
   std::string eviction_policy = "lru";
+  /// When true, read path may return cached data with stale=true if UFS times out.
+  bool allow_stale_read_on_ufs_timeout = false;
 };
 
 struct ClientConfig {
@@ -63,6 +65,10 @@ struct ClientConfig {
   size_t prefetch_blocks = 2;
   /// Max blocks per BatchReadPages RPC. Default 8.
   size_t batch_read_max_blocks = 8;
+  /// When true, client accepts stale read results (propagated from Worker).
+  bool allow_read_degradation = false;
+  /// Metrics HTTP port. 0 = disabled. When set, client exposes /metrics.
+  uint16_t metrics_port = 0;
 };
 
 struct UfsConfig {

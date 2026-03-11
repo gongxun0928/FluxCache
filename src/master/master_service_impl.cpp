@@ -427,6 +427,14 @@ void MasterServiceImpl::RunHeartbeatToAllWorkers() {
       CallWorkerHeartbeat(w.worker_id, w.host, w.port);
     }
   }
+  UpdateActiveWorkersGauge();
+}
+
+void MasterServiceImpl::UpdateActiveWorkersGauge() {
+  if (!metrics_) return;
+  auto workers = worker_manager_.GetAllWorkersInRing();
+  metrics_->SetGauge("fluxcache_active_workers",
+                    static_cast<uint64_t>(workers.size()));
 }
 
 void MasterServiceImpl::CallWorkerHeartbeat(WorkerId worker_id,

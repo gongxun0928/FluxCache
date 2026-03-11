@@ -1,0 +1,2 @@
+/usr/bin/ar qc libfluxcache_sdk.a CMakeFiles/fluxcache_sdk.dir/sdk/fluxcache_sdk.cpp.o CMakeFiles/fluxcache_sdk.dir/sdk/file_handle.cpp.o
+/usr/bin/ranlib libfluxcache_sdk.a

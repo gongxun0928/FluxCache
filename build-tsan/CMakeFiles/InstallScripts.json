@@ -1,0 +1,25 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/common/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/proto/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/ufs/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/master/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/worker/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/src/client/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/examples/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/benchmark/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/common/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/proto/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/ufs/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/master/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/worker/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/client/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/integration/cmake_install.cmake",
+		"/Users/gongxun/workspace/code/FluxCache/build-tsan/tests/regression/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

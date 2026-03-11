@@ -112,6 +112,17 @@ void OptionalInt(const YAML::Node& node, int default_val, int* out) {
   *out = default_val;
 }
 
+void OptionalBool(const YAML::Node& node, bool default_val, bool* out) {
+  if (node && node.IsDefined()) {
+    try {
+      *out = node.as<bool>();
+      return;
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
 }  // namespace
 
 StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
@@ -170,6 +181,8 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
                  &cfg.worker.heartbeat_interval_ms);
   OptionalUint16(worker["metrics_port"], 0, &cfg.worker.metrics_port);
   OptionalString(worker["eviction_policy"], "lru", &cfg.worker.eviction_policy);
+  OptionalBool(worker["allow_stale_read_on_ufs_timeout"], false,
+               &cfg.worker.allow_stale_read_on_ufs_timeout);
 
   // client
   YAML::Node client = fluxcache["client"];
@@ -221,6 +234,9 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
                &cfg.client.circuit_breaker_open_duration_ms);
   OptionalInt(client["circuit_breaker_half_open_probes"], 1,
                &cfg.client.circuit_breaker_half_open_probes);
+  OptionalUint16(client["metrics_port"], 0, &cfg.client.metrics_port);
+  OptionalBool(client["allow_read_degradation"], false,
+               &cfg.client.allow_read_degradation);
 
   // ufs
   YAML::Node ufs = fluxcache["ufs"];

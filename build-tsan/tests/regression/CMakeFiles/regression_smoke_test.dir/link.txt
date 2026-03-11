@@ -1,0 +1,1 @@
+/usr/bin/c++  -fsanitize=thread -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names  -fsanitize=thread CMakeFiles/regression_smoke_test.dir/regression_smoke_test.cpp.o -o regression_smoke_test  /opt/homebrew/lib/libgtest_main.a /opt/homebrew/lib/libgtest.a

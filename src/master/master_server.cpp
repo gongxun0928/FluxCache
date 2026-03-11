@@ -42,6 +42,7 @@ bool MasterServer::Start() {
   if (!server_) return false;
 
   heartbeat_stop_.store(false);
+  if (service_impl_) service_impl_->UpdateActiveWorkersGauge();
   heartbeat_thread_ = std::thread([this]() {
     while (!heartbeat_stop_.load(std::memory_order_relaxed)) {
       std::this_thread::sleep_for(std::chrono::seconds(10));

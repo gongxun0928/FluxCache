@@ -5,6 +5,8 @@
 
 namespace fluxcache {
 
+class MetricsRegistry;
+
 enum class CircuitState { kClosed, kOpen, kHalfOpen };
 
 class CircuitBreaker {
@@ -14,6 +16,7 @@ class CircuitBreaker {
     double error_rate_threshold = 0.5;
     int open_duration_ms = 30000;
     int half_open_probes = 1;
+    MetricsRegistry* metrics = nullptr;
   };
 
   explicit CircuitBreaker(const Options& options);

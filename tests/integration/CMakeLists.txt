@@ -29,3 +29,11 @@ target_link_libraries(gc_reconciliation_test PRIVATE fluxcache_client
                                           fluxcache_master fluxcache_worker
                                           fluxcache_ufs GTest::gtest_main)
 add_test(NAME gc_reconciliation_test COMMAND gc_reconciliation_test)
+
+add_executable(degradation_fault_injection_test degradation_fault_injection_test.cpp)
+target_include_directories(degradation_fault_injection_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(degradation_fault_injection_test PRIVATE fluxcache_client
+                                              fluxcache_common fluxcache_proto
+                                              fluxcache_master fluxcache_worker
+                                              fluxcache_ufs GTest::gtest_main)
+add_test(NAME degradation_fault_injection_test COMMAND degradation_fault_injection_test)

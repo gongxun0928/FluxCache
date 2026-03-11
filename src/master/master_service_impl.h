@@ -58,6 +58,9 @@ class MasterServiceImpl : public proto::MasterService::Service {
 
   // GC reconciliation: call Worker.Heartbeat for all workers.
   void RunHeartbeatToAllWorkers();
+
+  /// Update fluxcache_active_workers gauge from WorkerManager.
+  void UpdateActiveWorkersGauge();
   void CallWorkerHeartbeat(WorkerId worker_id, const std::string& host,
                           uint16_t port);
 

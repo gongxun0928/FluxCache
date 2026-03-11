@@ -22,6 +22,7 @@ namespace fluxcache {
 class FluxCacheClient {
  public:
   explicit FluxCacheClient(const ClientConfig& config);
+  ~FluxCacheClient();
 
   /// Refresh ring from Master if needed, then return Worker for block_id.
   /// Returns NotFound if no worker in ring.
@@ -36,8 +37,10 @@ class FluxCacheClient {
 
   /// Read file data. Returns data at [offset, offset+size), clamped to file end.
   /// Uses GetFileInfo, block/page split, Worker ReadPages, and retry on failure.
+  /// If stale_out is non-null and any block was served from cache (UFS unavailable),
+  /// sets *stale_out = true.
   StatusOr<std::string> Read(const std::string& path, uint64_t offset,
-                            uint64_t size);
+                            uint64_t size, bool* stale_out = nullptr);
 
   /// Write data at [offset, offset+data.size()). New file: CreateFile; existing:
   /// GetFileInfo. Splits by block/page, calls WritePages, then CompleteFile.
@@ -73,6 +76,9 @@ class FluxCacheClient {
   CachedHashRing cached_ring_;
   bool ring_fetched_ = false;
   std::unique_ptr<ClientPageCache> cache_;
+
+  std::unique_ptr<class MetricsRegistry> metrics_registry_;
+  std::unique_ptr<class HttpMetricsServer> http_metrics_server_;
 };
 
 }  // namespace fluxcache

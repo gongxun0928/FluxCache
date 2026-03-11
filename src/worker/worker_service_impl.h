@@ -15,7 +15,8 @@ class PageStore;
 class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
   WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size,
-                    MetricsRegistry* metrics = nullptr);
+                    MetricsRegistry* metrics = nullptr,
+                    bool allow_stale_read_on_ufs_timeout = false);
 
   ::grpc::Status ReadPages(::grpc::ServerContext* context,
                            const ::fluxcache::proto::ReadPagesRequest* request,
@@ -39,6 +40,7 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
   size_t page_size_;
   size_t block_size_;
   MetricsRegistry* metrics_;
+  bool allow_stale_read_on_ufs_timeout_;
 };
 
 }  // namespace fluxcache

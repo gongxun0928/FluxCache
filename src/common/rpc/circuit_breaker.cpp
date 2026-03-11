@@ -1,4 +1,5 @@
 #include "common/rpc/circuit_breaker.h"
+#include "common/metrics/metrics_registry.h"
 
 namespace fluxcache {
 
@@ -42,6 +43,9 @@ void CircuitBreaker::RecordFailure() {
     if (failures_ >= options_.failure_threshold) {
       state_ = CircuitState::kOpen;
       open_since_ = std::chrono::steady_clock::now();
+      if (options_.metrics) {
+        options_.metrics->IncCounter("fluxcache_client_breaker_opens_total");
+      }
     }
     return;
   }
@@ -49,6 +53,9 @@ void CircuitBreaker::RecordFailure() {
     state_ = CircuitState::kOpen;
     half_open_successes_ = 0;
     open_since_ = std::chrono::steady_clock::now();
+    if (options_.metrics) {
+      options_.metrics->IncCounter("fluxcache_client_breaker_opens_total");
+    }
     return;
   }
 }
