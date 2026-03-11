@@ -3,6 +3,9 @@
 #include "common/status.h"
 #include "common/types.h"
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 namespace fluxcache {
 
@@ -122,6 +125,68 @@ TEST_F(PageStoreTest, Contains) {
 
   store_->DeletePage(id);
   EXPECT_FALSE(store_->Contains(id));
+}
+
+// Concurrent correctness: multi-thread GetPage/PutPage/DeletePage stress.
+// Run with TSAN to verify no data races.
+TEST_F(PageStoreTest, ConcurrentGetPutDeleteStress) {
+  constexpr int kNumBlocks = 32;
+  constexpr int kPagesPerBlock = 2;
+  constexpr int kNumThreads = 8;
+  constexpr int kOpsPerThread = 200;
+  const int64_t mtime = 10000;
+
+  // Use larger tier for concurrent test (32*2 pages * 1024 = 64KB)
+  MemoryTier large_tier(128 * 1024);
+  PageStore concurrent_store(&large_tier, kPageSize);
+
+  // Pre-populate pages across many blocks (different stripes)
+  for (int b = 0; b < kNumBlocks; ++b) {
+    for (int p = 0; p < kPagesPerBlock; ++p) {
+      PageId id{MakeBlockId(100 + b, 0), static_cast<uint16_t>(p)};
+      std::string data(kPageSize, static_cast<char>('a' + (b % 26)));
+      concurrent_store.PutPage(id, data, mtime);
+    }
+  }
+
+  std::atomic<int> read_ok{0};
+  std::atomic<int> read_miss{0};
+  std::atomic<int> write_ok{0};
+  std::atomic<int> delete_ok{0};
+
+  auto worker = [&](int thread_id) {
+    for (int i = 0; i < kOpsPerThread; ++i) {
+      int b = (thread_id * 7 + i * 11) % kNumBlocks;
+      int p = i % kPagesPerBlock;
+      PageId id{MakeBlockId(100 + b, 0), static_cast<uint16_t>(p)};
+
+      int op = (thread_id + i) % 10;
+      if (op < 7) {
+        std::string out;
+        auto s = concurrent_store.GetPage(id, mtime, &out);
+        if (s.ok()) {
+          read_ok++;
+          EXPECT_EQ(out.size(), kPageSize);
+        } else {
+          read_miss++;
+        }
+      } else if (op < 9) {
+        std::string data(kPageSize, static_cast<char>('x' + (i % 4)));
+        if (concurrent_store.PutPage(id, data, mtime).ok()) write_ok++;
+      } else {
+        if (concurrent_store.DeletePage(id).ok()) delete_ok++;
+      }
+    }
+  };
+
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kNumThreads; ++t) {
+    threads.emplace_back(worker, t);
+  }
+  for (auto& th : threads) th.join();
+
+  EXPECT_GT(read_ok.load() + read_miss.load(), 0);
+  EXPECT_GT(write_ok.load() + delete_ok.load(), 0);
 }
 
 }  // namespace fluxcache

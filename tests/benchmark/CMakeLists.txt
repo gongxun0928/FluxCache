@@ -1,0 +1,4 @@
+add_executable(page_store_bench page_store_bench.cpp)
+target_include_directories(page_store_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(page_store_bench PRIVATE fluxcache_worker fluxcache_common)
+add_test(NAME page_store_bench COMMAND page_store_bench)

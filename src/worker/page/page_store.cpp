@@ -3,6 +3,7 @@
 #include "worker/cache/eviction_policy.h"
 #include "worker/meta/meta_store.h"
 #include "worker/storage/tier_manager.h"
+#include <shared_mutex>
 #include <unordered_set>
 
 namespace fluxcache {
@@ -36,20 +37,33 @@ Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
                          std::string* out) {
   if (!out) return Status::InvalidArgument("null output");
 
-  auto it = page_index_.find(id);
-  if (it == page_index_.end()) {
-    return Status::NotFound("page not found");
+  TierBlockHandle handle_copy;
+  int64_t mtime_copy;
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::shared_lock<std::shared_mutex> st(stripe_locks_[si]);
+
+    auto it = page_index_.find(id);
+    if (it == page_index_.end()) {
+      return Status::NotFound("page not found");
+    }
+
+    const PageEntry& entry = it->second;
+    if (entry.mtime_ms != expected_mtime_ms) {
+      // Mtime mismatch: release locks and delegate to DeletePage.
+      st.unlock();
+      rec.unlock();
+      Status s = DeletePage(id);
+      if (!s.ok()) return s;
+      return Status::NotFound("mtime mismatch, stale page removed");
+    }
+
+    handle_copy = entry.handle;
+    mtime_copy = entry.mtime_ms;
   }
 
-  const PageEntry& entry = it->second;
-  if (entry.mtime_ms != expected_mtime_ms) {
-    // Mtime mismatch: delete stale page and return miss.
-    Status s = DeletePage(id);
-    if (!s.ok()) return s;
-    return Status::NotFound("mtime mismatch, stale page removed");
-  }
-
-  Status s = tier_->Read(entry.handle, 0, page_size_, out);
+  Status s = tier_->Read(handle_copy, 0, page_size_, out);
   if (s.ok() && eviction_policy_) {
     eviction_policy_->OnAccess(id);
   }
@@ -66,17 +80,23 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
     return Status::InvalidArgument("put page data must be non-empty");
   }
 
-  // If page exists, delete it first to reclaim capacity.
-  auto it = page_index_.find(id);
-  if (it != page_index_.end()) {
-    if (eviction_policy_) eviction_policy_->OnRemove(id);
-    Status s = tier_->Release(it->second.handle);
-    if (!s.ok()) return s;
-    RemoveFromBlockIndex(id);
-    page_index_.erase(it);
+  TierBlockHandle handle;
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+
+    // If page exists, delete it first to reclaim capacity.
+    auto it = page_index_.find(id);
+    if (it != page_index_.end()) {
+      if (eviction_policy_) eviction_policy_->OnRemove(id);
+      Status s = tier_->Release(it->second.handle);
+      if (!s.ok()) return s;
+      RemoveFromBlockIndex(id);
+      page_index_.erase(it);
+    }
   }
 
-  TierBlockHandle handle;
   Status s = tier_->Allocate(page_size_, &handle);
   if (!s.ok()) return s;
 
@@ -86,14 +106,26 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
     return s;
   }
 
-  page_index_[id] = PageEntry{handle, mtime_ms};
-  block_to_pages_[id.block_id].insert(id.page_index);
-  SyncMetaPut(id, page_index_[id]);
-  if (eviction_policy_) eviction_policy_->OnInsert(id);
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+    page_index_[id] = PageEntry{handle, mtime_ms};
+    block_to_pages_[id.block_id].insert(id.page_index);
+    SyncMetaPut(id, page_index_[id]);
+    if (eviction_policy_) eviction_policy_->OnInsert(id);
+  }
   return Status::OK();
 }
 
 Status PageStore::DeletePage(PageId id) {
+  std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+  size_t si = StripeIndex(id.block_id);
+  std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+  return DeletePageUnlocked(id);
+}
+
+Status PageStore::DeletePageUnlocked(PageId id) {
   auto it = page_index_.find(id);
   if (it == page_index_.end()) {
     SyncMetaDelete(id);  // Idempotent: ensure MetaStore clean
@@ -110,6 +142,10 @@ Status PageStore::DeletePage(PageId id) {
 }
 
 Status PageStore::DeleteBlockPages(BlockId block_id) {
+  std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+  size_t si = StripeIndex(block_id);
+  std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+
   auto it = block_to_pages_.find(block_id);
   if (it == block_to_pages_.end()) {
     if (meta_store_) meta_store_->DeleteByBlock(block_id);
@@ -120,7 +156,7 @@ Status PageStore::DeleteBlockPages(BlockId block_id) {
   block_to_pages_.erase(it);
   for (uint16_t page_index : indices) {
     PageId id{block_id, page_index};
-    Status s = DeletePage(id);
+    Status s = DeletePageUnlocked(id);
     if (!s.ok()) return s;
   }
   if (meta_store_) meta_store_->DeleteByBlock(block_id);
@@ -128,10 +164,16 @@ Status PageStore::DeleteBlockPages(BlockId block_id) {
 }
 
 bool PageStore::Contains(PageId id) const {
+  std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+  size_t si = StripeIndex(id.block_id);
+  std::shared_lock<std::shared_mutex> st(stripe_locks_[si]);
   return page_index_.find(id) != page_index_.end();
 }
 
 bool PageStore::ContainsBlock(BlockId block_id) const {
+  std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+  size_t si = StripeIndex(block_id);
+  std::shared_lock<std::shared_mutex> st(stripe_locks_[si]);
   return block_to_pages_.find(block_id) != block_to_pages_.end();
 }
 
@@ -140,6 +182,7 @@ void PageStore::RecoverFromMetaStore() {
   auto* tm = dynamic_cast<TierManager*>(tier_);
   if (!tm) return;
 
+  std::unique_lock<std::shared_mutex> rec(recovery_mu_);
   meta_store_->ScanAll([this, tm](PageId id, const PageMeta& meta) {
     TierBlockHandle handle = tm->RegisterRecoveredBlock(meta.tier_type,
                                                         meta.tier_block_id);
@@ -163,6 +206,10 @@ void PageStore::RemoveFromBlockIndex(PageId id) {
 }
 
 std::optional<TierType> PageStore::GetPageTier(PageId id) const {
+  std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+  size_t si = StripeIndex(id.block_id);
+  std::shared_lock<std::shared_mutex> st(stripe_locks_[si]);
+
   auto it = page_index_.find(id);
   if (it == page_index_.end()) return std::nullopt;
   TierType tt;
@@ -179,13 +226,23 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
     return Status::InvalidArgument("RelocatePage requires TierManager");
   }
 
-  auto it = page_index_.find(id);
-  if (it == page_index_.end()) {
-    return Status::NotFound("page not found");
+  TierBlockHandle old_handle;
+  int64_t mtime_ms;
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+
+    auto it = page_index_.find(id);
+    if (it == page_index_.end()) {
+      return Status::NotFound("page not found");
+    }
+    old_handle = it->second.handle;
+    mtime_ms = it->second.mtime_ms;
   }
 
   std::string data;
-  Status s = tier_->Read(it->second.handle, 0, page_size_, &data);
+  Status s = tier_->Read(old_handle, 0, page_size_, &data);
   if (!s.ok()) return s;
 
   TierBlockHandle new_handle;
@@ -198,10 +255,13 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
     return s;
   }
 
-  TierBlockHandle old_handle = it->second.handle;
-  int64_t mtime_ms = it->second.mtime_ms;
-  page_index_[id] = PageEntry{new_handle, mtime_ms};
-  SyncMetaPut(id, page_index_[id]);
+  {
+    std::shared_lock<std::shared_mutex> rec(recovery_mu_);
+    size_t si = StripeIndex(id.block_id);
+    std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
+    page_index_[id] = PageEntry{new_handle, mtime_ms};
+    SyncMetaPut(id, page_index_[id]);
+  }
   return tier_->Release(old_handle);
 }
 

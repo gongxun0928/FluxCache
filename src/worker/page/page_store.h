@@ -4,10 +4,12 @@
 #include "common/types.h"
 #include "worker/storage/storage_tier.h"
 
+#include <array>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -75,12 +77,25 @@ class PageStore {
   void SyncMetaPut(PageId id, const PageEntry& entry);
   void SyncMetaDelete(PageId id);
 
+  static constexpr size_t kNumStripes = 256;
+
+  // Stripe index for BlockId. All pages in same block share one stripe.
+  static size_t StripeIndex(BlockId block_id) {
+    return static_cast<size_t>(block_id) % kNumStripes;
+  }
+
+  // Internal delete without locking. Caller must hold stripe unique lock.
+  Status DeletePageUnlocked(PageId id);
+
   StorageTier* tier_;
   MetaStore* meta_store_;
   EvictionPolicy* eviction_policy_;
   size_t page_size_;
   std::unordered_map<PageId, PageEntry> page_index_;
   std::unordered_map<BlockId, std::set<uint16_t>> block_to_pages_;
+
+  mutable std::shared_mutex recovery_mu_;
+  mutable std::array<std::shared_mutex, kNumStripes> stripe_locks_;
 
   std::mutex gc_mu_;
   std::optional<std::pair<BlockId, uint16_t>> gc_scan_cursor_;

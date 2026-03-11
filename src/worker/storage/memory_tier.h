@@ -2,6 +2,7 @@
 
 #include "worker/storage/storage_tier.h"
 #include <cstddef>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -19,12 +20,16 @@ class MemoryTier : public StorageTier {
               std::string* out) override;
   Status Release(const TierBlockHandle& handle) override;
 
-  size_t UsedCapacity() const override { return used_; }
+  size_t UsedCapacity() const override {
+    std::lock_guard<std::mutex> lock(mu_);
+    return used_;
+  }
   size_t CapacityLimit() const override { return capacity_limit_; }
 
   TierType GetTierType() const override { return TierType::kMemory; }
 
  private:
+  mutable std::mutex mu_;
   size_t capacity_limit_;
   size_t used_{0};
   uint64_t next_id_{1};

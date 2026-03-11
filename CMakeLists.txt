@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(FLUXCACHE_ENABLE_FUSE "Build FUSE client" OFF)
 option(FLUXCACHE_ENABLE_S3 "Build S3 UFS backend" OFF)
+option(FLUXCACHE_ENABLE_TSAN "Build with ThreadSanitizer for concurrency checks" OFF)
 
 # yaml-cpp for config loading
 find_package(yaml-cpp QUIET)
@@ -68,6 +69,12 @@ if(FLUXCACHE_ENABLE_FUSE)
   if(NOT FLUXCACHE_HAS_FUSE)
     message(STATUS "FUSE: fuse3 not found, skipping fluxcache-fuse target")
   endif()
+endif()
+
+if(FLUXCACHE_ENABLE_TSAN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+  message(STATUS "ThreadSanitizer enabled")
 endif()
 
 add_subdirectory(src)

@@ -10,6 +10,7 @@ Status MemoryTier::Allocate(size_t size, TierBlockHandle* handle) {
   if (size == 0) {
     return Status::InvalidArgument("allocate size must be positive");
   }
+  std::lock_guard<std::mutex> lock(mu_);
   if (used_ + size > capacity_limit_) {
     return Status::ResourceExhausted("memory tier capacity exhausted");
   }
@@ -26,6 +27,7 @@ Status MemoryTier::Write(const TierBlockHandle& handle, size_t offset,
   if (!handle.valid()) {
     return Status::InvalidArgument("invalid handle");
   }
+  std::lock_guard<std::mutex> lock(mu_);
   auto it = blocks_.find(handle.id);
   if (it == blocks_.end()) {
     return Status::InvalidArgument("handle not found");
@@ -46,6 +48,7 @@ Status MemoryTier::Read(const TierBlockHandle& handle, size_t offset,
   if (!handle.valid()) {
     return Status::InvalidArgument("invalid handle");
   }
+  std::lock_guard<std::mutex> lock(mu_);
   auto it = blocks_.find(handle.id);
   if (it == blocks_.end()) {
     return Status::InvalidArgument("handle not found");
@@ -62,6 +65,7 @@ Status MemoryTier::Release(const TierBlockHandle& handle) {
   if (!handle.valid()) {
     return Status::InvalidArgument("invalid handle");
   }
+  std::lock_guard<std::mutex> lock(mu_);
   auto it = blocks_.find(handle.id);
   if (it == blocks_.end()) {
     return Status::InvalidArgument("handle not found");
