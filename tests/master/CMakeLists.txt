@@ -17,3 +17,7 @@ add_test(NAME worker_manager_test COMMAND worker_manager_test)
 add_executable(sync_from_ufs_test sync_from_ufs_test.cpp)
 target_link_libraries(sync_from_ufs_test PRIVATE fluxcache_master fluxcache_proto fluxcache_ufs GTest::gtest_main)
 add_test(NAME sync_from_ufs_test COMMAND sync_from_ufs_test)
+
+add_executable(get_file_info_test get_file_info_test.cpp)
+target_link_libraries(get_file_info_test PRIVATE fluxcache_master fluxcache_proto fluxcache_ufs GTest::gtest_main)
+add_test(NAME get_file_info_test COMMAND get_file_info_test)

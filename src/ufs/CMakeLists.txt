@@ -1,4 +1,5 @@
 add_library(fluxcache_ufs STATIC
+  fake_ufs.cpp
   local_ufs.cpp
   ufs_factory.cpp
 )

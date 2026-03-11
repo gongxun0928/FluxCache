@@ -44,6 +44,10 @@ class InodeTree {
   // Returns inode_id on success, nullopt on failure (e.g. parent missing, already exists).
   std::optional<InodeId> CreateFile(const std::string& path);
 
+  // Create file with UFS metadata (size, block_size, mtime). Used by PathResolver SyncFromUfs.
+  std::optional<InodeId> CreateFile(const std::string& path, uint64_t size,
+                                    uint64_t block_size, int64_t mtime_ms);
+
   // Create directory at path. Parent must exist.
   std::optional<InodeId> CreateDirectory(const std::string& path);
 

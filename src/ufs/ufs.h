@@ -22,6 +22,9 @@ class UFS {
  public:
   virtual ~UFS() = default;
 
+  // Returns a new instance with same state. Used by tests (e.g. FakeUfs).
+  virtual std::unique_ptr<UFS> Clone() const { return nullptr; }
+
   virtual Status Read(const std::string& path, uint64_t offset, uint64_t size,
                       std::string* out) = 0;
   virtual Status Write(const std::string& path, uint64_t offset,

@@ -8,6 +8,8 @@ namespace fluxcache {
 
 namespace {
 
+constexpr uint64_t kDefaultBlockSize = 64ULL * 1024 * 1024;  // 64MB
+
 std::vector<std::string> SplitPath(const std::string& path) {
   std::vector<std::string> parts;
   if (path.empty() || path[0] != '/') return parts;
@@ -126,7 +128,8 @@ Status PathResolver::SyncFromUfs(const std::string& logical_path) {
       auto id = tree_->CreateDirectory(child_logical);
       if (!id.has_value()) return Status::IOError("PathResolver: CreateDirectory failed");
     } else {
-      auto id = tree_->CreateFile(child_logical);
+      auto id = tree_->CreateFile(child_logical, found->size, kDefaultBlockSize,
+                                  found->mtime_ms);
       if (!id.has_value()) return Status::IOError("PathResolver: CreateFile failed");
     }
     current_logical = child_logical;
@@ -148,7 +151,9 @@ Status PathResolver::SyncFromUfs(const std::string& logical_path) {
           return Status::IOError("PathResolver: CreateDirectory failed");
         }
       } else {
-        if (!tree_->CreateFile(child_logical).has_value()) {
+        if (!tree_->CreateFile(child_logical, e.size, kDefaultBlockSize,
+                              e.mtime_ms)
+                .has_value()) {
           return Status::IOError("PathResolver: CreateFile failed");
         }
       }

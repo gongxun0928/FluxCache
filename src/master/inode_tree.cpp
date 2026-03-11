@@ -189,6 +189,54 @@ std::optional<InodeId> InodeTree::CreateFile(const std::string& path) {
   return id;
 }
 
+std::optional<InodeId> InodeTree::CreateFile(const std::string& path,
+                                            uint64_t size, uint64_t block_size,
+                                            int64_t mtime_ms) {
+  std::unique_lock lock(mu_);
+  if (!ready_) return std::nullopt;
+
+  std::vector<std::string> parts = SplitPath(path);
+  if (parts.empty()) return std::nullopt;
+
+  std::string name = parts.back();
+  parts.pop_back();
+
+  InodeId parent_id = kRootInodeId;
+  for (const auto& p : parts) {
+    const DirNode* cur = GetDirNode(parent_id);
+    if (!cur) return std::nullopt;
+    auto it = cur->children.find(p);
+    if (it == cur->children.end()) return std::nullopt;
+    parent_id = it->second;
+  }
+
+  DirNode* parent = GetDirNode(parent_id);
+  if (!parent) return std::nullopt;
+  if (parent->children.count(name)) return std::nullopt;
+
+  InodeId id = next_id_++;
+  int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+
+  InodeEntry entry;
+  entry.parent_id = parent_id;
+  entry.size = size;
+  entry.block_size = block_size;
+  entry.creation_time_ms = now;
+  entry.modification_time_ms = mtime_ms;
+  entry.file_version = 0;
+  entry.set_directory(false);
+  entry.name = name;
+
+  if (!store_->PutInode(id, entry)) return std::nullopt;
+  if (!store_->PutEdge(parent_id, name, id)) return std::nullopt;
+  if (!store_->PutNextId(next_id_)) return std::nullopt;
+
+  parent->children[name] = id;
+  return id;
+}
+
 std::optional<InodeId> InodeTree::CreateDirectory(const std::string& path) {
   std::unique_lock lock(mu_);
   if (!ready_) return std::nullopt;
