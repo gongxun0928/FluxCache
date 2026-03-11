@@ -105,7 +105,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P2-03 | 淘汰策略接口与 LRU 实现 | P1 | P1-10 | created | | |
+| P2-03 | 淘汰策略接口与 LRU 实现 | P1 | P1-10 | completed | | 2026-03-11 实现并验证 |
 | P2-02 | 自动层级晋升与淘汰流程 | P1 | P2-01, P2-03, P2-05 | created | | |
 | P2-04 | LFU 淘汰策略 | P1 | P2-03, P2-02 | created | | |
 

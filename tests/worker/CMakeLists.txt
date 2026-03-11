@@ -24,3 +24,9 @@ target_include_directories(write_pages_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(write_pages_test PRIVATE fluxcache_worker fluxcache_ufs
                                                 fluxcache_proto GTest::gtest_main)
 add_test(NAME write_pages_test COMMAND write_pages_test)
+
+add_executable(lru_policy_test lru_policy_test.cpp)
+target_include_directories(lru_policy_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(lru_policy_test PRIVATE fluxcache_worker fluxcache_proto
+                                               GTest::gtest_main)
+add_test(NAME lru_policy_test COMMAND lru_policy_test)
