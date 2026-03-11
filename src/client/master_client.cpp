@@ -48,7 +48,9 @@ StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
   return ExecuteWithRetry<proto::GetHashRingResponse>(
-      p, [this]() { return DoGetHashRing(pool_, master_address_, deadline_sec_); });
+      p, [this]() {
+        return DoGetHashRing(pool_, master_address_, deadline_sec_);
+      });
 }
 
 namespace {
