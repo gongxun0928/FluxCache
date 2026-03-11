@@ -336,6 +336,20 @@ std::optional<InodeEntry> InodeTree::GetInode(InodeId id) {
   return store_->GetInode(id);
 }
 
+bool InodeTree::UpdateInodeSizeAndMtime(InodeId id, uint64_t size,
+                                        int64_t mtime_ms) {
+  std::unique_lock lock(mu_);
+  if (!ready_) return false;
+
+  auto entry = store_->GetInode(id);
+  if (!entry) return false;
+  if (entry->is_directory()) return false;
+
+  entry->size = size;
+  entry->modification_time_ms = mtime_ms;
+  return store_->PutInode(id, *entry);
+}
+
 bool InodeTree::HasInodesUnderPath(const std::string& prefix) const {
   return LookupPath(prefix).has_value();
 }

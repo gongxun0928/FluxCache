@@ -62,6 +62,10 @@ class InodeTree {
   // Get inode entry for path (for FileInfo).
   std::optional<InodeEntry> GetInode(InodeId id);
 
+  // Update inode size and modification time. Used by CompleteFile.
+  // Returns false if inode not found or is directory.
+  bool UpdateInodeSizeAndMtime(InodeId id, uint64_t size, int64_t mtime_ms);
+
   // Returns true if any inode exists whose logical path equals prefix or is
   // under prefix (e.g. /data or /data/file). Used for Unmount safety check.
   bool HasInodesUnderPath(const std::string& prefix) const;

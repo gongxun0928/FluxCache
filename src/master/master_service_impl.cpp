@@ -3,6 +3,7 @@
 #include <chrono>
 #include <grpcpp/grpcpp.h>
 #include <optional>
+#include <string>
 
 namespace fluxcache {
 
@@ -29,6 +30,14 @@ int64_t NowMs() {
     default:
       return ::grpc::StatusCode::UNKNOWN;
   }
+}
+
+std::string Dirname(const std::string& path) {
+  if (path.empty() || path == "/") return "/";
+  size_t pos = path.rfind('/');
+  if (pos == std::string::npos) return "/";
+  if (pos == 0) return "/";
+  return path.substr(0, pos);
 }
 
 }  // namespace
@@ -175,16 +184,94 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
 
 ::grpc::Status MasterServiceImpl::CreateFile(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::CreateFileRequest* /*request*/,
-    ::fluxcache::proto::CreateFileResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "CreateFile not implemented");
+    const ::fluxcache::proto::CreateFileRequest* request,
+    ::fluxcache::proto::CreateFileResponse* response) {
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "CreateFile: path is required");
+  }
+  const std::string& path = request->path();
+  if (path[0] != '/' || path == "/") {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "CreateFile: path must be absolute and not root");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "CreateFile: InodeTree not ready");
+  }
+
+  std::string ufs_uri, ufs_path;
+  Status s = mount_table_.Resolve(path, &ufs_uri, &ufs_path);
+  if (!s.ok()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "CreateFile: path not under any mount point");
+  }
+
+  s = path_resolver_.SyncFromUfs(Dirname(path));
+  if (!s.ok()) {
+    return ToGrpcStatus(s);
+  }
+
+  if (inode_tree_->LookupPath(path).has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::ALREADY_EXISTS,
+                          "CreateFile: path already exists");
+  }
+
+  auto inode_id = inode_tree_->CreateFile(path);
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                          "CreateFile: failed to create inode");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                          "CreateFile: inode not found after create");
+  }
+
+  auto* fi = response->mutable_file_info();
+  fi->set_inode_id(*inode_id);
+  fi->set_size(entry->size);
+  fi->set_block_size(entry->block_size);
+  fi->set_ufs_mtime_ms(entry->modification_time_ms);
+  fi->set_is_directory(false);
+  response->set_ufs_uri(ufs_uri);
+  response->set_ufs_path(ufs_path);
+  return ::grpc::Status::OK;
 }
 
 ::grpc::Status MasterServiceImpl::CompleteFile(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::CompleteFileRequest* /*request*/,
+    const ::fluxcache::proto::CompleteFileRequest* request,
     ::fluxcache::proto::CompleteFileResponse* /*response*/) {
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "CompleteFile not implemented");
+  if (!request || request->inode_id() == 0) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "CompleteFile: inode_id is required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "CompleteFile: InodeTree not ready");
+  }
+
+  auto entry = inode_tree_->GetInode(request->inode_id());
+  if (!entry) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "CompleteFile: inode not found");
+  }
+  if (entry->is_directory()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "CompleteFile: inode is a directory");
+  }
+
+  int64_t mtime_ms = request->has_ufs_mtime_ms()
+                         ? request->ufs_mtime_ms()
+                         : entry->modification_time_ms;
+  if (!inode_tree_->UpdateInodeSizeAndMtime(request->inode_id(),
+                                            request->size(), mtime_ms)) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                          "CompleteFile: failed to update inode");
+  }
+  return ::grpc::Status::OK;
 }
 
 ::grpc::Status MasterServiceImpl::DeleteFile(

@@ -42,6 +42,7 @@ message CreateFileResponse {
 message CompleteFileRequest {
   uint64 inode_id = 1;
   uint64 size = 2;
+  optional int64 ufs_mtime_ms = 3;
 }
 
 message CompleteFileResponse {}
