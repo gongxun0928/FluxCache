@@ -1,6 +1,7 @@
 #include "client/fluxcache_client.h"
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
+#include "common/metrics/slow_request_tracker.h"
 #include "common/types.h"
 #include "master.pb.h"
 #include "worker.pb.h"
@@ -27,11 +28,20 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
                                   : 4}),
       ring_fetched_(false) {
   MetricsRegistry* metrics_ptr = nullptr;
+  SlowRequestTracker* slow_tracker_ptr = nullptr;
   if (config.metrics_port > 0) {
     metrics_registry_ = std::make_unique<MetricsRegistry>();
+    slow_request_tracker_ = std::make_unique<SlowRequestTracker>(1.0);
     metrics_ptr = metrics_registry_.get();
+    slow_tracker_ptr = slow_request_tracker_.get();
+    metrics_registry_->RegisterPrometheusExporter([this]() {
+      return slow_request_tracker_->ExportPrometheusFragment();
+    });
     http_metrics_server_ = std::make_unique<HttpMetricsServer>(
         config.metrics_port, metrics_registry_.get());
+    http_metrics_server_->RegisterDebugEndpoint(
+        "/debug/slow-requests",
+        [this]() { return slow_request_tracker_->FormatDebug(); });
     http_metrics_server_->Start();
   }
   CircuitBreaker* master_cb = nullptr;
@@ -102,8 +112,11 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
   CircuitBreaker* worker_cb = GetOrCreateWorkerCircuitBreaker(addr);
   MetricsRegistry* metrics_ptr = metrics_registry_ ? metrics_registry_.get()
                                                     : nullptr;
+  SlowRequestTracker* slow_tracker_ptr =
+      slow_request_tracker_ ? slow_request_tracker_.get() : nullptr;
   return std::make_unique<WorkerClient>(&pool_, addr, resilience_config_,
-                                        retry_policy_, worker_cb, metrics_ptr);
+                                        retry_policy_, worker_cb, metrics_ptr,
+                                        slow_tracker_ptr);
 }
 
 CircuitBreaker* FluxCacheClient::GetOrCreateWorkerCircuitBreaker(

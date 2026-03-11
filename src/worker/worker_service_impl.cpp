@@ -1,14 +1,17 @@
 #include "worker/worker_service_impl.h"
 
 #include "common/metrics/metrics_registry.h"
+#include "common/metrics/slow_request_tracker.h"
 #include "common/status.h"
 #include "common/types.h"
 #include "ufs/ufs.h"
 #include "ufs/ufs_factory.h"
+#include "worker/cache/hotspot_tracker.h"
 #include "worker/page/page_store.h"
 
 #include <chrono>
 #include <grpcpp/grpcpp.h>
+#include <sstream>
 #include <string>
 
 namespace fluxcache {
@@ -17,16 +20,26 @@ namespace {
 
 struct RpcMetricsGuard {
   MetricsRegistry* m;
+  SlowRequestTracker* slow_tracker;
   std::string method;
+  std::string extra_info;
   std::chrono::steady_clock::time_point start;
-  RpcMetricsGuard(MetricsRegistry* m, const char* method)
-      : m(m), method(method), start(std::chrono::steady_clock::now()) {}
+  RpcMetricsGuard(MetricsRegistry* m, SlowRequestTracker* slow_tracker,
+                  const char* method, const std::string& extra_info)
+      : m(m),
+        slow_tracker(slow_tracker),
+        method(method),
+        extra_info(extra_info),
+        start(std::chrono::steady_clock::now()) {}
   ~RpcMetricsGuard() {
+    auto sec = std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - start)
+                   .count();
     if (m) {
-      auto sec = std::chrono::duration<double>(
-                     std::chrono::steady_clock::now() - start)
-                     .count();
       m->ObserveLatency("worker", method, sec);
+    }
+    if (slow_tracker) {
+      slow_tracker->Record("worker", method, sec, extra_info);
     }
   }
 };
@@ -51,19 +64,31 @@ bool ParseUfsUri(const std::string& ufs_uri, std::string* scheme,
 WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
                                      size_t block_size,
                                      MetricsRegistry* metrics,
-                                     bool allow_stale_read_on_ufs_timeout)
+                                     bool allow_stale_read_on_ufs_timeout,
+                                     SlowRequestTracker* slow_tracker,
+                                     HotspotTracker* hotspot_tracker)
     : page_store_(page_store),
       page_size_(page_size),
       block_size_(block_size),
       metrics_(metrics),
-      allow_stale_read_on_ufs_timeout_(allow_stale_read_on_ufs_timeout) {}
+      allow_stale_read_on_ufs_timeout_(allow_stale_read_on_ufs_timeout),
+      slow_tracker_(slow_tracker),
+      hotspot_tracker_(hotspot_tracker) {}
 
 ::grpc::Status WorkerServiceImpl::ReadPages(
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::ReadPagesRequest* request,
     ::fluxcache::proto::ReadPagesResponse* response) {
   if (metrics_) metrics_->IncCounter("worker", "ReadPages");
-  RpcMetricsGuard _guard(metrics_, "ReadPages");
+
+  std::string extra_info;
+  if (request) {
+    std::ostringstream oss;
+    oss << "block_id=" << request->block_id();
+    extra_info = oss.str();
+  }
+  RpcMetricsGuard _guard(metrics_, slow_tracker_, "ReadPages", extra_info);
+
   if (!request || !response) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -109,6 +134,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     }
     uint16_t page_index = static_cast<uint16_t>(pi);
     PageId id{block_id, page_index};
+    if (hotspot_tracker_) hotspot_tracker_->Record(id);
     uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
     std::string page_data;
@@ -160,6 +186,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     }
     uint16_t page_index = static_cast<uint16_t>(pi);
     PageId id{block_id, page_index};
+    if (hotspot_tracker_) hotspot_tracker_->Record(id);
     uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
     std::string page_data;
@@ -211,7 +238,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     const ::fluxcache::proto::BatchReadPagesRequest* request,
     ::fluxcache::proto::BatchReadPagesResponse* response) {
   if (metrics_) metrics_->IncCounter("worker", "BatchReadPages");
-  RpcMetricsGuard _guard(metrics_, "BatchReadPages");
+  RpcMetricsGuard _guard(metrics_, slow_tracker_, "BatchReadPages", "");
   if (!request || !response) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -263,6 +290,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
       }
       uint16_t page_index = static_cast<uint16_t>(pi);
       PageId id{block_id, page_index};
+      if (hotspot_tracker_) hotspot_tracker_->Record(id);
       uint64_t offset =
           block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
@@ -316,6 +344,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
       }
       uint16_t page_index = static_cast<uint16_t>(pi);
       PageId id{block_id, page_index};
+      if (hotspot_tracker_) hotspot_tracker_->Record(id);
       uint64_t offset =
           block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
@@ -369,7 +398,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     const ::fluxcache::proto::WritePagesRequest* request,
     ::fluxcache::proto::WritePagesResponse* response) {
   if (metrics_) metrics_->IncCounter("worker", "WritePages");
-  RpcMetricsGuard _guard(metrics_, "WritePages");
+  RpcMetricsGuard _guard(metrics_, slow_tracker_, "WritePages", "");
   if (!request) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -462,7 +491,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     const ::fluxcache::proto::HeartbeatRequest* request,
     ::fluxcache::proto::HeartbeatResponse* response) {
   if (metrics_) metrics_->IncCounter("worker", "Heartbeat");
-  RpcMetricsGuard _guard(metrics_, "Heartbeat");
+  RpcMetricsGuard _guard(metrics_, slow_tracker_, "Heartbeat", "");
   if (!request || !response) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request/response");
   }

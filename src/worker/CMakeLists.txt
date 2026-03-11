@@ -14,6 +14,7 @@ add_library(fluxcache_worker STATIC
   cache/eviction_policy_factory.cpp
   cache/tier_promoter.cpp
   cache/tier_evictor.cpp
+  cache/hotspot_tracker.cpp
 )
 target_include_directories(fluxcache_worker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(fluxcache_worker PUBLIC fluxcache_common fluxcache_proto

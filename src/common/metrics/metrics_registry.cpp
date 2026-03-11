@@ -142,7 +142,17 @@ std::string MetricsRegistry::ExportPrometheus() const {
     out << name << "_count " << count << "\n";
   }
 
+  for (const auto& fn : extra_exporters_) {
+    out << fn();
+  }
+
   return out.str();
+}
+
+void MetricsRegistry::RegisterPrometheusExporter(
+    std::function<std::string()> fn) {
+  std::lock_guard<std::mutex> lock(mu_);
+  extra_exporters_.push_back(std::move(fn));
 }
 
 void MetricsRegistry::IncCounter(const std::string& name) {

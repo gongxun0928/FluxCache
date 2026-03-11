@@ -1,7 +1,9 @@
 #pragma once
 
 #include "common/config/config.h"
+#include "common/metrics/slow_request_tracker.h"
 #include "worker/cache/eviction_policy.h"
+#include "worker/cache/hotspot_tracker.h"
 #include "worker/page/page_store.h"
 #include "worker/storage/tier_manager.h"
 #include <grpcpp/grpcpp.h>
@@ -39,6 +41,8 @@ class WorkerServer {
   std::unique_ptr<EvictionPolicy> eviction_policy_;
   std::unique_ptr<PageStore> page_store_;
   std::unique_ptr<MetricsRegistry> metrics_registry_;
+  std::unique_ptr<SlowRequestTracker> slow_request_tracker_;
+  std::unique_ptr<HotspotTracker> hotspot_tracker_;
   std::unique_ptr<WorkerServiceImpl> service_impl_;
   std::unique_ptr<HttpMetricsServer> http_metrics_server_;
   std::unique_ptr<::grpc::Server> server_;

@@ -63,3 +63,9 @@ target_include_directories(tier_promotion_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(tier_promotion_test PRIVATE fluxcache_worker fluxcache_proto
                                                GTest::gtest_main)
 add_test(NAME tier_promotion_test COMMAND tier_promotion_test)
+
+add_executable(hotspot_tracker_test hotspot_tracker_test.cpp)
+target_include_directories(hotspot_tracker_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(hotspot_tracker_test PRIVATE fluxcache_worker fluxcache_proto
+                                               GTest::gtest_main)
+add_test(NAME hotspot_tracker_test COMMAND hotspot_tracker_test)

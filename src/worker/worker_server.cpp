@@ -2,7 +2,9 @@
 #include "worker/worker_service_impl.h"
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
+#include "common/metrics/slow_request_tracker.h"
 #include "worker/cache/eviction_policy_factory.h"
+#include "worker/cache/hotspot_tracker.h"
 #include "worker/meta/meta_store.h"
 #include "worker/storage/memory_tier.h"
 #include "worker/storage/ssd_tier.h"
@@ -47,12 +49,31 @@ WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
   }
   if (config_.metrics_port > 0) {
     metrics_registry_ = std::make_unique<MetricsRegistry>();
+    slow_request_tracker_ =
+        std::make_unique<SlowRequestTracker>(1.0);  // 1s threshold
+    hotspot_tracker_ = std::make_unique<HotspotTracker>(100);
+
+    metrics_registry_->RegisterPrometheusExporter([this]() {
+      return slow_request_tracker_->ExportPrometheusFragment();
+    });
+    metrics_registry_->RegisterPrometheusExporter([this]() {
+      return hotspot_tracker_->ExportPrometheusFragment();
+    });
+
     service_impl_ = std::make_unique<WorkerServiceImpl>(
         page_store_.get(), kPageSize, kBlockSize, metrics_registry_.get(),
-        config_.allow_stale_read_on_ufs_timeout);
+        config_.allow_stale_read_on_ufs_timeout,
+        slow_request_tracker_.get(), hotspot_tracker_.get());
+
     http_metrics_server_ =
         std::make_unique<HttpMetricsServer>(config_.metrics_port,
                                             metrics_registry_.get());
+    http_metrics_server_->RegisterDebugEndpoint(
+        "/debug/slow-requests",
+        [this]() { return slow_request_tracker_->FormatDebug(); });
+    http_metrics_server_->RegisterDebugEndpoint(
+        "/debug/hot-pages",
+        [this]() { return hotspot_tracker_->FormatDebug(); });
   } else {
     service_impl_ = std::make_unique<WorkerServiceImpl>(
         page_store_.get(), kPageSize, kBlockSize, nullptr,

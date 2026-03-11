@@ -1,5 +1,6 @@
 #include "client/worker_client.h"
 #include "common/metrics/metrics_registry.h"
+#include "common/metrics/slow_request_tracker.h"
 #include "worker.grpc.pb.h"
 #include <chrono>
 #include <grpcpp/client_context.h>
@@ -11,13 +12,15 @@ WorkerClient::WorkerClient(ChannelPool* pool,
                           const ResilienceConfig& resilience_config,
                           const RetryPolicy& retry_policy,
                           CircuitBreaker* circuit_breaker,
-                          MetricsRegistry* metrics)
+                          MetricsRegistry* metrics,
+                          SlowRequestTracker* slow_tracker)
     : pool_(pool),
       worker_address_(worker_address),
       resilience_config_(resilience_config),
       retry_policy_(retry_policy),
       circuit_breaker_(circuit_breaker),
-      metrics_(metrics) {}
+      metrics_(metrics),
+      slow_tracker_(slow_tracker) {}
 
 namespace {
 
@@ -83,9 +86,16 @@ Status WorkerClient::ReadPages(const proto::ReadPagesRequest& request,
   int deadline = resilience_config_.TimeoutSec(OpType::kWorkerRead);
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
+  auto start = std::chrono::steady_clock::now();
   Status s = ExecuteWithRetry(p, [this, &request, response, deadline]() {
     return DoReadPages(pool_, worker_address_, deadline, request, response);
   }, metrics_, "worker");
+  if (slow_tracker_) {
+    auto sec = std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - start)
+                   .count();
+    slow_tracker_->Record("client_worker", "ReadPages", sec, "");
+  }
   if (circuit_breaker_) {
     s.ok() ? circuit_breaker_->RecordSuccess()
            : circuit_breaker_->RecordFailure();
@@ -102,10 +112,17 @@ Status WorkerClient::BatchReadPages(
   int deadline = resilience_config_.TimeoutSec(OpType::kWorkerRead);
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
+  auto start = std::chrono::steady_clock::now();
   Status s = ExecuteWithRetry(p, [this, &request, response, deadline]() {
     return DoBatchReadPages(pool_, worker_address_, deadline, request,
                             response);
   }, metrics_, "worker");
+  if (slow_tracker_) {
+    auto sec = std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - start)
+                   .count();
+    slow_tracker_->Record("client_worker", "BatchReadPages", sec, "");
+  }
   if (circuit_breaker_) {
     s.ok() ? circuit_breaker_->RecordSuccess()
            : circuit_breaker_->RecordFailure();

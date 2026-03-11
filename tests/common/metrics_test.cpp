@@ -1,5 +1,6 @@
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
+#include "common/metrics/slow_request_tracker.h"
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
 #include <cstring>
@@ -125,6 +126,47 @@ TEST(HttpMetricsServerTest, NonMetricsPathReturns404) {
   std::string response(buf);
 
   EXPECT_TRUE(response.find("404 Not Found") != std::string::npos);
+}
+
+TEST(HttpMetricsServerTest, DebugSlowRequestsEndpoint) {
+  MetricsRegistry reg;
+  SlowRequestTracker tracker(0.1);
+  tracker.Record("worker", "ReadPages", 1.5, "block_id=1");
+
+  const uint16_t port = 19995;
+  HttpMetricsServer server(port, &reg);
+  server.RegisterDebugEndpoint("/debug/slow-requests",
+                               [&tracker]() { return tracker.FormatDebug(); });
+  ASSERT_TRUE(server.Start());
+
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(fd, 0);
+
+  struct sockaddr_in addr {};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+
+  int ret = connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
+  ASSERT_EQ(ret, 0);
+
+  const char* req = "GET /debug/slow-requests HTTP/1.1\r\nHost: localhost\r\n\r\n";
+  send(fd, req, strlen(req), 0);
+
+  char buf[1024];
+  ssize_t n = recv(fd, buf, sizeof(buf) - 1, 0);
+  close(fd);
+
+  server.Shutdown();
+
+  ASSERT_GT(n, 0);
+  buf[n] = '\0';
+  std::string response(buf);
+
+  EXPECT_TRUE(response.find("HTTP/1.1 200") != std::string::npos);
+  EXPECT_TRUE(response.find("worker") != std::string::npos);
+  EXPECT_TRUE(response.find("ReadPages") != std::string::npos);
+  EXPECT_TRUE(response.find("block_id=1") != std::string::npos);
 }
 
 }  // namespace fluxcache

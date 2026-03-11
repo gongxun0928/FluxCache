@@ -9,6 +9,8 @@
 namespace fluxcache {
 
 class PageStore;
+class HotspotTracker;
+class SlowRequestTracker;
 
 // WorkerService implementation. ReadPages uses PageStore + UFS; WritePages
 // returns UNIMPLEMENTED; Heartbeat returns empty response.
@@ -16,7 +18,9 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
   WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size,
                     MetricsRegistry* metrics = nullptr,
-                    bool allow_stale_read_on_ufs_timeout = false);
+                    bool allow_stale_read_on_ufs_timeout = false,
+                    SlowRequestTracker* slow_tracker = nullptr,
+                    HotspotTracker* hotspot_tracker = nullptr);
 
   ::grpc::Status ReadPages(::grpc::ServerContext* context,
                            const ::fluxcache::proto::ReadPagesRequest* request,
@@ -41,6 +45,8 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
   size_t block_size_;
   MetricsRegistry* metrics_;
   bool allow_stale_read_on_ufs_timeout_;
+  SlowRequestTracker* slow_tracker_;
+  HotspotTracker* hotspot_tracker_;
 };
 
 }  // namespace fluxcache

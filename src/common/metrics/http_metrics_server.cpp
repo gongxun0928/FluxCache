@@ -21,16 +21,29 @@ const char kResponse404[] =
     "Content-Length: 0\r\n"
     "Connection: close\r\n\r\n";
 
-/// Parse first line of HTTP request. Returns true if GET /metrics.
-bool IsGetMetrics(const char* buf, size_t len) {
-  if (len < 15) return false;  // "GET /metrics " is 14 chars
-  if (std::strncmp(buf, "GET ", 4) != 0) return false;
-  if (std::strncmp(buf + 4, "/metrics", 8) != 0) return false;
-  char c = buf[12];
-  return c == ' ' || c == '?' || c == '\r' || c == '\n';
+const char kResponse200Text[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "Connection: close\r\n\r\n";
+
+/// Parse "GET /path HTTP/1.1" and return path (without query string).
+std::string ParseGetPath(const char* buf, size_t len) {
+  if (len < 5 || std::strncmp(buf, "GET ", 4) != 0) return "";
+  size_t i = 4;
+  while (i < len && buf[i] == ' ') ++i;
+  if (i >= len) return "";
+  size_t start = i;
+  while (i < len && buf[i] != ' ' && buf[i] != '?' && buf[i] != '\r') ++i;
+  return std::string(buf + start, buf + i);
 }
 
 }  // namespace
+
+void HttpMetricsServer::RegisterDebugEndpoint(
+    const std::string& path, std::function<std::string()> handler) {
+  std::lock_guard<std::mutex> lock(handlers_mu_);
+  debug_handlers_[path] = std::move(handler);
+}
 
 HttpMetricsServer::HttpMetricsServer(uint16_t port, MetricsRegistry* registry)
     : port_(port), registry_(registry) {}
@@ -87,6 +100,21 @@ void HttpMetricsServer::Shutdown() {
   }
 }
 
+std::string HttpMetricsServer::HandleRequest(const char* buf, size_t len) {
+  std::string path = ParseGetPath(buf, len);
+  if (path == "/metrics") {
+    return registry_->ExportPrometheus();
+  }
+  {
+    std::lock_guard<std::mutex> lock(handlers_mu_);
+    auto it = debug_handlers_.find(path);
+    if (it != debug_handlers_.end()) {
+      return it->second();
+    }
+  }
+  return "";
+}
+
 void HttpMetricsServer::ServeLoop() {
   char buf[512];
   while (running_ && listen_fd_ >= 0) {
@@ -103,9 +131,12 @@ void HttpMetricsServer::ServeLoop() {
     ssize_t n = recv(client_fd, buf, sizeof(buf) - 1, 0);
     if (n > 0) {
       buf[n] = '\0';
-      if (IsGetMetrics(buf, static_cast<size_t>(n))) {
-        std::string body = registry_->ExportPrometheus();
-        send(client_fd, kResponse200, strlen(kResponse200), 0);
+      std::string body = HandleRequest(buf, static_cast<size_t>(n));
+      if (!body.empty()) {
+        bool is_prometheus = (ParseGetPath(buf, static_cast<size_t>(n)) == "/metrics");
+        const char* headers = is_prometheus ? kResponse200 : kResponse200Text;
+        size_t header_len = is_prometheus ? strlen(kResponse200) : strlen(kResponse200Text);
+        send(client_fd, headers, header_len, 0);
         send(client_fd, body.data(), body.size(), 0);
       } else {
         send(client_fd, kResponse404, strlen(kResponse404), 0);

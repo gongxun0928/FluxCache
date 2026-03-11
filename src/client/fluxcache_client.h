@@ -78,6 +78,7 @@ class FluxCacheClient {
   std::unique_ptr<ClientPageCache> cache_;
 
   std::unique_ptr<class MetricsRegistry> metrics_registry_;
+  std::unique_ptr<class SlowRequestTracker> slow_request_tracker_;
   std::unique_ptr<class HttpMetricsServer> http_metrics_server_;
 };
 

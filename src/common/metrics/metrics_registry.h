@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -45,6 +46,10 @@ class MetricsRegistry {
   /// Export all metrics in Prometheus text format.
   std::string ExportPrometheus() const;
 
+  /// Register an extra Prometheus exporter. Called during ExportPrometheus().
+  /// Use for SlowRequestTracker, HotspotTracker, etc.
+  void RegisterPrometheusExporter(std::function<std::string()> fn);
+
  private:
   struct CounterKey {
     std::string service;
@@ -74,6 +79,7 @@ class MetricsRegistry {
   std::map<NamedKey, std::unique_ptr<std::atomic<uint64_t>>> labeled_counters_;
   std::map<std::string, std::unique_ptr<std::atomic<uint64_t>>> gauges_;
   std::map<std::string, std::vector<double>> histogram_samples_;
+  std::vector<std::function<std::string()>> extra_exporters_;
 };
 
 }  // namespace fluxcache

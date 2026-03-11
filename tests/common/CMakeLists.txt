@@ -24,6 +24,11 @@ add_executable(metrics_test metrics_test.cpp)
 target_link_libraries(metrics_test PRIVATE fluxcache_common GTest::gtest_main)
 add_test(NAME metrics_test COMMAND metrics_test)
 
+add_executable(slow_request_tracker_test slow_request_tracker_test.cpp)
+target_link_libraries(slow_request_tracker_test PRIVATE fluxcache_common
+                                                   GTest::gtest_main)
+add_test(NAME slow_request_tracker_test COMMAND slow_request_tracker_test)
+
 add_executable(resilience_config_test resilience_config_test.cpp)
 target_link_libraries(resilience_config_test PRIVATE fluxcache_common
                                                      GTest::gtest_main)
