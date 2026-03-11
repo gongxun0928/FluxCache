@@ -81,11 +81,11 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P1-14A | Master.GetFileInfo 最小实现 | P1 | P1-05B, P1-05C, P1-08B, P1-11 | completed | | 2026-03-11 实现并验证 |
 | P1-14B | Worker.ReadPages 最小实现 | P1 | P1-06, P1-10, P1-11 | completed | | 2026-03-11 实现并验证 |
 | P1-14C | Client.Read 最小实现 | P1 | P1-07, P1-14A, P1-14B, P1-16 | completed | | 2026-03-11 实现并验证 |
-| P1-14D | 读路径端到端验证 | P1 | P1-14C | created | | |
+| P1-14D | 读路径端到端验证 | P1 | P1-14C | completed | | 2026-03-11 实现并验证 |
 | P1-15A | Master.CreateFile / CompleteFile | P1 | P1-05B, P1-08B | completed | | 2026-03-11 实现并验证 |
 | P1-15B | Worker.WritePages 最小实现 | P1 | P1-10, P1-11, P1-14B | completed | | 2026-03-11 实现并验证 |
-| P1-15C | Client.Write 最小实现 | P1 | P1-07, P1-15A, P1-15B, P1-16 | created | | |
-| P1-15D | 写路径端到端验证 | P1 | P1-14D, P1-15C | created | | |
+| P1-15C | Client.Write 最小实现 | P1 | P1-07, P1-15A, P1-15B, P1-16 | completed | | 2026-03-11 实现并验证 |
+| P1-15D | 写路径端到端验证 | P1 | P1-14D, P1-15C | completed | | 2026-03-11 实现并验证 | |
 
 ## Phase D：恢复与删除语义
 
