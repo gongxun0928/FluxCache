@@ -31,6 +31,11 @@ StatusOr<std::unique_ptr<FluxCacheSDK>> FluxCacheSDK::Create(
   cc.retry_initial_delay_ms = config.retry_initial_delay_ms > 0
                                   ? config.retry_initial_delay_ms
                                   : 50;
+  cc.local_cache_enabled = config.local_cache_enabled;
+  cc.local_cache_size_bytes =
+      config.local_cache_size_mb > 0
+          ? config.local_cache_size_mb * 1024 * 1024
+          : 0;
 
   auto impl = std::make_unique<Impl>();
   impl->client_config = cc;

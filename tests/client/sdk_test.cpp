@@ -231,4 +231,82 @@ TEST_F(SdkTest, InvalidConfigReturnsError) {
   EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST_F(SdkTest, LocalCacheFirstReadThenSecondReadHitsL1) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-l1", std::move(fake));
+
+  SetupMountAndWorker("sdk-l1");
+
+  SDKConfig cfg = MakeSdkConfig();
+  cfg.local_cache_enabled = true;
+  cfg.local_cache_size_mb = 16;
+  auto sdk_result = FluxCacheSDK::Create(cfg);
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  const std::string path = "/mnt/l1_test.dat";
+  const std::string data = "L1 cache test data";
+
+  ASSERT_TRUE(sdk->Create(path).ok());
+  auto open_result = sdk->Open(path, OpenMode::kReadWrite);
+  ASSERT_TRUE(open_result.ok()) << open_result.status().message();
+  auto handle = std::move(open_result.value());
+  ASSERT_TRUE(handle->Write(0, data).ok());
+  handle->Close();
+  handle.reset();
+
+  open_result = sdk->Open(path, OpenMode::kReadOnly);
+  ASSERT_TRUE(open_result.ok()) << open_result.status().message();
+  handle = std::move(open_result.value());
+
+  char buf1[64] = {};
+  auto r1 = handle->Read(buf1, 0, sizeof(buf1));
+  ASSERT_TRUE(r1.ok()) << r1.status().message();
+  EXPECT_EQ(std::string(buf1, r1.value()), data);
+
+  char buf2[64] = {};
+  auto r2 = handle->Read(buf2, 0, sizeof(buf2));
+  ASSERT_TRUE(r2.ok()) << r2.status().message();
+  EXPECT_EQ(std::string(buf2, r2.value()), data);
+
+  handle->Close();
+}
+
+TEST_F(SdkTest, LocalCacheDisabledReadsWork) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-nocache", std::move(fake));
+
+  SetupMountAndWorker("sdk-nocache");
+
+  SDKConfig cfg = MakeSdkConfig();
+  cfg.local_cache_enabled = false;
+  auto sdk_result = FluxCacheSDK::Create(cfg);
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  const std::string path = "/mnt/nocache_test.dat";
+  const std::string data = "No cache";
+
+  ASSERT_TRUE(sdk->Create(path).ok());
+  auto open_result = sdk->Open(path, OpenMode::kReadWrite);
+  ASSERT_TRUE(open_result.ok()) << open_result.status().message();
+  auto handle = std::move(open_result.value());
+  ASSERT_TRUE(handle->Write(0, data).ok());
+  handle->Close();
+  handle.reset();
+
+  open_result = sdk->Open(path, OpenMode::kReadOnly);
+  ASSERT_TRUE(open_result.ok()) << open_result.status().message();
+  handle = std::move(open_result.value());
+
+  char buf[64] = {};
+  auto r = handle->Read(buf, 0, sizeof(buf));
+  ASSERT_TRUE(r.ok()) << r.status().message();
+  EXPECT_EQ(std::string(buf, r.value()), data);
+
+  handle->Close();
+}
+
 }  // namespace fluxcache

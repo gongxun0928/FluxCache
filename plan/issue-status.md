@@ -115,7 +115,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 |---|---|---|---|---|---|---|
 | P1-12 | CLI smoke 工具 | P2 | P1-14D, P1-15D | completed | | 2026-03-11 实现并验证 |
 | P2-09 | C++ SDK MVP（不含 rename / 目录变更） | P1 | P1-14D, P1-15D, P2-08 | completed | | 2026-03-11 实现并验证 |
-| P2-11 | Client 本地 Page 内存缓存 | P1 | P2-09, P1-16 | created | | |
+| P2-11 | Client 本地 Page 内存缓存 | P1 | P2-09, P1-16 | completed | | 2026-03-11 实现并验证 |
 | P2-06 | FUSE 挂载基础能力 | P1 | P2-09 | created | | |
 
 ## Phase H：后端扩展

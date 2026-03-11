@@ -1,5 +1,6 @@
 #pragma once
 
+#include "client/cache/client_page_cache.h"
 #include "client/cached_hash_ring.h"
 #include "client/master_client.h"
 #include "client/worker_client.h"
@@ -57,6 +58,7 @@ class FluxCacheClient {
   std::unique_ptr<MasterClient> master_client_;
   CachedHashRing cached_ring_;
   bool ring_fetched_ = false;
+  std::unique_ptr<ClientPageCache> cache_;
 };
 
 }  // namespace fluxcache

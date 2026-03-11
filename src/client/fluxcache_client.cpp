@@ -3,6 +3,8 @@
 #include "master.pb.h"
 #include "worker.pb.h"
 #include <algorithm>
+#include <string>
+#include <unordered_map>
 
 namespace fluxcache {
 
@@ -17,6 +19,9 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
       ring_fetched_(false) {
   master_client_ = std::make_unique<MasterClient>(
       &pool_, master_address_, 10, retry_policy_);
+  if (config.local_cache_enabled && config.local_cache_size_bytes > 0) {
+    cache_ = std::make_unique<ClientPageCache>(config.local_cache_size_bytes);
+  }
 }
 
 Status FluxCacheClient::RefreshRing() {
@@ -133,48 +138,87 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
     uint32_t last_page =
         static_cast<uint32_t>((block_local_end - 1) / page_size_);
 
-    proto::ReadPagesRequest req;
-    req.set_block_id(block_id);
-    req.set_expected_mtime_ms(expected_mtime_ms);
-    req.set_ufs_uri(ufs_uri);
-    req.set_ufs_path(ufs_path);
+    std::unordered_map<uint32_t, std::string> page_data;
+    std::vector<uint32_t> missing_pages;
+
     for (uint32_t pi = first_page; pi <= last_page; ++pi) {
-      req.add_page_indices(pi);
-    }
-
-    auto worker_result = GetWorkerForBlock(block_id);
-    if (!worker_result.ok()) {
-      return worker_result.status();
-    }
-    auto client_result = GetWorkerClient(worker_result.value());
-    if (!client_result.ok()) {
-      return client_result.status();
-    }
-
-    proto::ReadPagesResponse read_resp;
-    Status s = client_result.value()->ReadPages(req, &read_resp);
-    if (!s.ok()) {
-      Status refresh_s = RefreshRing();
-      if (refresh_s.ok()) {
-        worker_result = GetWorkerForBlock(block_id);
-        if (worker_result.ok()) {
-          client_result = GetWorkerClient(worker_result.value());
-          if (client_result.ok()) {
-            s = client_result.value()->ReadPages(req, &read_resp);
-          }
+      PageId page_id = MakePageId(block_id, static_cast<uint16_t>(pi));
+      if (cache_) {
+        auto cached = cache_->Get(page_id, expected_mtime_ms);
+        if (cached) {
+          page_data[pi] =
+              std::string(cached->begin(), cached->end());
+          continue;
         }
       }
+      missing_pages.push_back(pi);
+    }
+
+    if (!missing_pages.empty()) {
+      proto::ReadPagesRequest req;
+      req.set_block_id(block_id);
+      req.set_expected_mtime_ms(expected_mtime_ms);
+      req.set_ufs_uri(ufs_uri);
+      req.set_ufs_path(ufs_path);
+      for (uint32_t pi : missing_pages) {
+        req.add_page_indices(pi);
+      }
+
+      auto worker_result = GetWorkerForBlock(block_id);
+      if (!worker_result.ok()) {
+        return worker_result.status();
+      }
+      auto client_result = GetWorkerClient(worker_result.value());
+      if (!client_result.ok()) {
+        return client_result.status();
+      }
+
+      proto::ReadPagesResponse read_resp;
+      Status s = client_result.value()->ReadPages(req, &read_resp);
       if (!s.ok()) {
-        return s;
+        Status refresh_s = RefreshRing();
+        if (refresh_s.ok()) {
+          worker_result = GetWorkerForBlock(block_id);
+          if (worker_result.ok()) {
+            client_result = GetWorkerClient(worker_result.value());
+            if (client_result.ok()) {
+              s = client_result.value()->ReadPages(req, &read_resp);
+            }
+          }
+        }
+        if (!s.ok()) {
+          return s;
+        }
+      }
+
+      const std::string& data = read_resp.data();
+      size_t pos = 0;
+      for (uint32_t pi : missing_pages) {
+        if (pos + page_size_ <= data.size()) {
+          std::string chunk = data.substr(pos, page_size_);
+          page_data[pi] = chunk;
+          if (cache_) {
+            std::vector<uint8_t> vec(chunk.begin(), chunk.end());
+            cache_->Put(MakePageId(block_id, static_cast<uint16_t>(pi)),
+                       std::move(vec), expected_mtime_ms);
+          }
+          pos += page_size_;
+        }
       }
     }
 
-    const std::string& data = read_resp.data();
+    std::string assembled;
+    for (uint32_t pi = first_page; pi <= last_page; ++pi) {
+      auto it = page_data.find(pi);
+      if (it != page_data.end()) {
+        assembled += it->second;
+      }
+    }
     size_t skip = block_local_start % page_size_;
     size_t take = static_cast<size_t>(overlap_end - overlap_start);
-    if (skip < data.size() && take > 0) {
-      size_t available = data.size() - skip;
-      result += data.substr(skip, std::min(take, available));
+    if (skip < assembled.size() && take > 0) {
+      size_t available = assembled.size() - skip;
+      result += assembled.substr(skip, std::min(take, available));
     }
   }
   return result;
@@ -341,7 +385,16 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
 }
 
 Status FluxCacheClient::Delete(const std::string& path) {
-  return master_client_->DeleteFile(path);
+  auto fi_result = master_client_->GetFileInfo(path);
+  InodeId inode_id = 0;
+  if (fi_result.ok()) {
+    inode_id = fi_result.value().file_info().inode_id();
+  }
+  Status s = master_client_->DeleteFile(path);
+  if (s.ok() && cache_ && inode_id != 0) {
+    cache_->InvalidateFile(inode_id);
+  }
+  return s;
 }
 
 }  // namespace fluxcache

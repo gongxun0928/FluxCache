@@ -1,3 +1,9 @@
+add_executable(client_page_cache_test client_page_cache_test.cpp)
+target_include_directories(client_page_cache_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(client_page_cache_test PRIVATE fluxcache_client
+                                         fluxcache_common GTest::gtest_main)
+add_test(NAME client_page_cache_test COMMAND client_page_cache_test)
+
 add_executable(client_test client_test.cpp)
 target_link_libraries(client_test PRIVATE fluxcache_client fluxcache_common
                                          fluxcache_proto GTest::gtest_main)

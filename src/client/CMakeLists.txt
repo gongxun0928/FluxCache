@@ -1,4 +1,5 @@
 add_library(fluxcache_client STATIC
+  cache/client_page_cache.cpp
   cached_hash_ring.cpp
   fluxcache_client.cpp
   master_client.cpp
