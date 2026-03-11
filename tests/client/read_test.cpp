@@ -185,4 +185,27 @@ TEST_F(ClientReadTest, NonexistentPathReturnsNotFound) {
   EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
 }
 
+// P3-03: Batch read returns correct content (batch path exercised).
+TEST_F(ClientReadTest, BatchReadReturnsCorrectContent) {
+  std::string p0(kPageSize, '0');
+  std::string p1(kPageSize, '1');
+  std::string expected = p0 + p1;
+  constexpr int64_t kMtime = 8888;
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFileWithContent("batch.dat", expected, kMtime);
+  RegisterFakeUfsForTest("read-batch", std::move(fake));
+
+  SetupMountAndWorker("read-batch");
+
+  ClientConfig cfg = MakeClientConfig();
+  cfg.prefetch_blocks = 0;
+  cfg.batch_read_max_blocks = 8;
+  FluxCacheClient client(cfg);
+  auto result = client.Read("/mnt/batch.dat", 0, expected.size());
+
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result.value().size(), expected.size());
+  EXPECT_EQ(result.value(), expected);
+}
+
 }  // namespace fluxcache

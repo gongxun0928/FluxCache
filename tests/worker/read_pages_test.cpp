@@ -170,4 +170,44 @@ TEST_F(ReadPagesTest, MissingUfsUriReturnsError) {
   EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
 }
 
+TEST_F(ReadPagesTest, BatchReadPagesReturnsOrderedBlockData) {
+  std::string p0(kPageSize, 'A');
+  std::string p1(kPageSize, 'B');
+  std::string p2(kPageSize, 'C');
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFileWithContent("batch.dat", p0 + p1 + p2, 7777);
+  RegisterFakeUfsForTest("rp-batch", std::move(fake));
+
+  BlockId block_id = MakeBlockId(10, 0);
+  ::grpc::ServerContext ctx;
+  proto::BatchReadPagesRequest req;
+  auto* r0 = req.add_requests();
+  r0->set_block_id(block_id);
+  r0->add_page_indices(0);
+  r0->set_expected_mtime_ms(7777);
+  r0->set_ufs_uri("fake://rp-batch");
+  r0->set_ufs_path("batch.dat");
+  auto* r1 = req.add_requests();
+  r1->set_block_id(block_id);
+  r1->add_page_indices(1);
+  r1->set_expected_mtime_ms(7777);
+  r1->set_ufs_uri("fake://rp-batch");
+  r1->set_ufs_path("batch.dat");
+  auto* r2 = req.add_requests();
+  r2->set_block_id(block_id);
+  r2->add_page_indices(2);
+  r2->set_expected_mtime_ms(7777);
+  r2->set_ufs_uri("fake://rp-batch");
+  r2->set_ufs_path("batch.dat");
+
+  proto::BatchReadPagesResponse resp;
+  auto status = service_impl_->BatchReadPages(&ctx, &req, &resp);
+
+  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_EQ(resp.block_data_size(), 3);
+  EXPECT_EQ(resp.block_data(0), p0);
+  EXPECT_EQ(resp.block_data(1), p1);
+  EXPECT_EQ(resp.block_data(2), p2);
+}
+
 }  // namespace fluxcache

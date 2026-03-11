@@ -21,6 +21,11 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
                            const ::fluxcache::proto::ReadPagesRequest* request,
                            ::fluxcache::proto::ReadPagesResponse* response) override;
 
+  ::grpc::Status BatchReadPages(
+      ::grpc::ServerContext* context,
+      const ::fluxcache::proto::BatchReadPagesRequest* request,
+      ::fluxcache::proto::BatchReadPagesResponse* response) override;
+
   ::grpc::Status WritePages(::grpc::ServerContext* context,
                             const ::fluxcache::proto::WritePagesRequest* request,
                             ::fluxcache::proto::WritePagesResponse* response) override;

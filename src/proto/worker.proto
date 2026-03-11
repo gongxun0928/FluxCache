@@ -7,6 +7,7 @@ import "common.proto";
 // WorkerService provides block-level read/write and heartbeat to clients.
 service WorkerService {
   rpc ReadPages(ReadPagesRequest) returns (ReadPagesResponse);
+  rpc BatchReadPages(BatchReadPagesRequest) returns (BatchReadPagesResponse);
   rpc WritePages(WritePagesRequest) returns (WritePagesResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }
@@ -21,6 +22,14 @@ message ReadPagesRequest {
 
 message ReadPagesResponse {
   bytes data = 1;
+}
+
+message BatchReadPagesRequest {
+  repeated ReadPagesRequest requests = 1;
+}
+
+message BatchReadPagesResponse {
+  repeated bytes block_data = 1;
 }
 
 message WritePagesRequest {

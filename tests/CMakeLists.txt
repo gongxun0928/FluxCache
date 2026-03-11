@@ -10,6 +10,7 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
+add_subdirectory(benchmark)
 add_subdirectory(common)
 add_subdirectory(proto)
 add_subdirectory(ufs)

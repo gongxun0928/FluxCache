@@ -131,6 +131,89 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
   return ::grpc::Status::OK;
 }
 
+::grpc::Status WorkerServiceImpl::BatchReadPages(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::BatchReadPagesRequest* request,
+    ::fluxcache::proto::BatchReadPagesResponse* response) {
+  if (metrics_) metrics_->IncCounter("worker", "BatchReadPages");
+  RpcMetricsGuard _guard(metrics_, "BatchReadPages");
+  if (!request || !response) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
+  }
+  if (request->requests().empty()) {
+    return ::grpc::Status::OK;
+  }
+
+  for (const auto& req : request->requests()) {
+    BlockId block_id = req.block_id();
+    int64_t expected_mtime_ms = req.expected_mtime_ms();
+    const std::string& ufs_uri = req.ufs_uri();
+    const std::string& ufs_path = req.ufs_path();
+
+    if (block_id == kInvalidBlockId || req.page_indices().empty()) {
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                            "block_id and page_indices required");
+    }
+    if (ufs_uri.empty() || ufs_path.empty()) {
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                            "ufs_uri and ufs_path required");
+    }
+
+    std::string scheme, authority;
+    if (!ParseUfsUri(ufs_uri, &scheme, &authority)) {
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                            "invalid ufs_uri format");
+    }
+
+    std::unique_ptr<UFS> ufs;
+    Status s = CreateUFS(scheme, authority, &ufs);
+    if (!s.ok()) {
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, s.message());
+    }
+    if (!ufs) {
+      return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                            "CreateUFS returned null");
+    }
+
+    uint32_t block_index = GetBlockIndex(block_id);
+    uint64_t block_offset =
+        static_cast<uint64_t>(block_index) * block_size_;
+
+    std::string concatenated;
+    for (uint32_t pi : req.page_indices()) {
+      if (pi > 65535) {
+        return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                              "page_index exceeds uint16 max");
+      }
+      uint16_t page_index = static_cast<uint16_t>(pi);
+      PageId id{block_id, page_index};
+      uint64_t offset =
+          block_offset + static_cast<uint64_t>(page_index) * page_size_;
+
+      std::string page_data;
+      s = page_store_->GetPage(id, expected_mtime_ms, &page_data);
+      if (!s.ok()) {
+        if (s.code() != StatusCode::kNotFound) {
+          return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
+        }
+        s = ufs->Read(ufs_path, offset, page_size_, &page_data);
+        if (!s.ok()) {
+          return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
+        }
+        s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+        if (!s.ok()) {
+          return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                s.message());
+        }
+      }
+      concatenated += page_data;
+    }
+
+    response->add_block_data(std::move(concatenated));
+  }
+  return ::grpc::Status::OK;
+}
+
 ::grpc::Status WorkerServiceImpl::WritePages(
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::WritePagesRequest* request,
