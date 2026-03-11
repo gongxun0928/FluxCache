@@ -16,7 +16,7 @@
 | `plan/` | 计划、Todo、issue 状态、roadmap |
 | `issues/` | issue 需求与验收标准，依赖见 `index.md` |
 | `.cursor/rules/` | 全流程约束（agent-lifecycle-gates、review-evidence-checklist 等） |
-| `.cursor/skills/` | 稳定交付、多 Agent 评审、issue-tracker |
+| `.cursor/skills/` | 稳定交付、多 Agent 评审、issue-tracker、TDD（Coding 阶段先写失败测试） |
 
 ## Git / Commit
 
