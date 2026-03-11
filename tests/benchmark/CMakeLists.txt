@@ -9,3 +9,11 @@ target_link_libraries(sequential_read_bench PRIVATE fluxcache_client fluxcache_c
                                          fluxcache_proto fluxcache_master
                                          fluxcache_worker fluxcache_ufs)
 add_test(NAME sequential_read_bench COMMAND sequential_read_bench)
+
+# P3-04: Single-page read benchmark (zero-copy fast path)
+add_executable(single_page_read_bench single_page_read_bench.cpp)
+target_include_directories(single_page_read_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(single_page_read_bench PRIVATE fluxcache_client fluxcache_common
+                                            fluxcache_proto fluxcache_master
+                                            fluxcache_worker fluxcache_ufs)
+add_test(NAME single_page_read_bench COMMAND single_page_read_bench)

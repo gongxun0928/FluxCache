@@ -50,11 +50,13 @@ bool ParseUfsUri(const std::string& ufs_uri, std::string* scheme,
 
 WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
                                      size_t block_size,
-                                     MetricsRegistry* metrics)
+                                     MetricsRegistry* metrics,
+                                     bool allow_stale_read_on_ufs_timeout)
     : page_store_(page_store),
       page_size_(page_size),
       block_size_(block_size),
-      metrics_(metrics) {}
+      metrics_(metrics),
+      allow_stale_read_on_ufs_timeout_(allow_stale_read_on_ufs_timeout) {}
 
 ::grpc::Status WorkerServiceImpl::ReadPages(
     ::grpc::ServerContext* /*context*/,
@@ -98,7 +100,59 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
   uint32_t block_index = GetBlockIndex(block_id);
   uint64_t block_offset = static_cast<uint64_t>(block_index) * block_size_;
 
+  // Single-page fast path: avoid concatenated += page_data copy (zero-copy opt).
+  if (request->page_indices().size() == 1) {
+    uint32_t pi = request->page_indices(0);
+    if (pi > 65535) {
+      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                            "page_index exceeds uint16 max");
+    }
+    uint16_t page_index = static_cast<uint16_t>(pi);
+    PageId id{block_id, page_index};
+    uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
+
+    std::string page_data;
+    s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+                             allow_stale_read_on_ufs_timeout_);
+    if (!s.ok()) {
+      if (s.code() != StatusCode::kNotFound) {
+        return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
+      }
+      auto ufs_start = std::chrono::steady_clock::now();
+      s = ufs->Read(ufs_path, offset, page_size_, &page_data);
+      if (metrics_) {
+        metrics_->IncCounter("fluxcache_ufs_reads_total");
+        if (s.ok()) {
+          auto ufs_sec = std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() - ufs_start)
+                             .count();
+          metrics_->ObserveHistogram("fluxcache_ufs_read_duration_seconds", ufs_sec);
+        }
+      }
+      if (!s.ok()) {
+        if (allow_stale_read_on_ufs_timeout_) {
+          s = page_store_->GetPageRelaxed(id, &page_data);
+          if (s.ok()) {
+            if (metrics_) metrics_->IncDegradationCounter("stale_read_total");
+            response->set_data(std::move(page_data));
+            response->set_stale(true);
+            return ::grpc::Status::OK;
+          }
+        }
+        return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
+      }
+      s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+      if (!s.ok()) {
+        return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
+                              s.message());
+      }
+    }
+    response->set_data(std::move(page_data));
+    return ::grpc::Status::OK;
+  }
+
   std::string concatenated;
+  bool any_stale = false;
   for (uint32_t pi : request->page_indices()) {
     if (pi > 65535) {
       return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
@@ -109,13 +163,33 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
     std::string page_data;
-    s = page_store_->GetPage(id, expected_mtime_ms, &page_data);
+    s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+                             allow_stale_read_on_ufs_timeout_);
     if (!s.ok()) {
       if (s.code() != StatusCode::kNotFound) {
         return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
       }
+      auto ufs_start = std::chrono::steady_clock::now();
       s = ufs->Read(ufs_path, offset, page_size_, &page_data);
+      if (metrics_) {
+        metrics_->IncCounter("fluxcache_ufs_reads_total");
+        if (s.ok()) {
+          auto ufs_sec = std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() - ufs_start)
+                             .count();
+          metrics_->ObserveHistogram("fluxcache_ufs_read_duration_seconds", ufs_sec);
+        }
+      }
       if (!s.ok()) {
+          if (allow_stale_read_on_ufs_timeout_) {
+            s = page_store_->GetPageRelaxed(id, &page_data);
+            if (s.ok()) {
+              any_stale = true;
+              if (metrics_) metrics_->IncDegradationCounter("stale_read_total");
+            concatenated += page_data;
+            continue;
+          }
+        }
         return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
       }
       s = page_store_->PutPage(id, page_data, expected_mtime_ms);
@@ -128,6 +202,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
   }
 
   response->set_data(std::move(concatenated));
+  if (any_stale) response->set_stale(true);
   return ::grpc::Status::OK;
 }
 
@@ -179,7 +254,61 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     uint64_t block_offset =
         static_cast<uint64_t>(block_index) * block_size_;
 
+    // Single-page fast path: avoid concatenated += page_data copy (zero-copy opt).
+    if (req.page_indices().size() == 1) {
+      uint32_t pi = req.page_indices(0);
+      if (pi > 65535) {
+        return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                              "page_index exceeds uint16 max");
+      }
+      uint16_t page_index = static_cast<uint16_t>(pi);
+      PageId id{block_id, page_index};
+      uint64_t offset =
+          block_offset + static_cast<uint64_t>(page_index) * page_size_;
+
+      std::string page_data;
+      s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+                               allow_stale_read_on_ufs_timeout_);
+      if (!s.ok()) {
+        if (s.code() != StatusCode::kNotFound) {
+          return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
+        }
+        auto ufs_start = std::chrono::steady_clock::now();
+        s = ufs->Read(ufs_path, offset, page_size_, &page_data);
+        if (metrics_) {
+          metrics_->IncCounter("fluxcache_ufs_reads_total");
+          if (s.ok()) {
+            auto ufs_sec = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now() - ufs_start)
+                               .count();
+            metrics_->ObserveHistogram("fluxcache_ufs_read_duration_seconds", ufs_sec);
+          }
+        }
+        if (!s.ok()) {
+          if (allow_stale_read_on_ufs_timeout_) {
+            s = page_store_->GetPageRelaxed(id, &page_data);
+            if (s.ok()) {
+              if (metrics_) metrics_->IncDegradationCounter("stale_read_total");
+              response->add_block_data(std::move(page_data));
+              response->add_stale(true);
+              continue;
+            }
+          }
+          return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
+        }
+        s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+        if (!s.ok()) {
+          return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
+                                s.message());
+        }
+      }
+      response->add_block_data(std::move(page_data));
+      response->add_stale(false);
+      continue;
+    }
+
     std::string concatenated;
+    bool block_stale = false;
     for (uint32_t pi : req.page_indices()) {
       if (pi > 65535) {
         return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
@@ -191,13 +320,33 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
           block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
       std::string page_data;
-      s = page_store_->GetPage(id, expected_mtime_ms, &page_data);
+      s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+                               allow_stale_read_on_ufs_timeout_);
       if (!s.ok()) {
         if (s.code() != StatusCode::kNotFound) {
           return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
         }
+        auto ufs_start = std::chrono::steady_clock::now();
         s = ufs->Read(ufs_path, offset, page_size_, &page_data);
+        if (metrics_) {
+          metrics_->IncCounter("fluxcache_ufs_reads_total");
+          if (s.ok()) {
+            auto ufs_sec = std::chrono::duration<double>(
+                               std::chrono::steady_clock::now() - ufs_start)
+                               .count();
+            metrics_->ObserveHistogram("fluxcache_ufs_read_duration_seconds", ufs_sec);
+          }
+        }
         if (!s.ok()) {
+          if (allow_stale_read_on_ufs_timeout_) {
+            s = page_store_->GetPageRelaxed(id, &page_data);
+            if (s.ok()) {
+              block_stale = true;
+              if (metrics_) metrics_->IncDegradationCounter("stale_read_total");
+              concatenated += page_data;
+              continue;
+            }
+          }
           return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
         }
         s = page_store_->PutPage(id, page_data, expected_mtime_ms);
@@ -210,6 +359,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     }
 
     response->add_block_data(std::move(concatenated));
+    response->add_stale(block_stale);
   }
   return ::grpc::Status::OK;
 }
