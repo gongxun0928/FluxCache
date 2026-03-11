@@ -1,5 +1,8 @@
 #include "client/fluxcache_client.h"
+#include "common/types.h"
 #include "master.pb.h"
+#include "worker.pb.h"
+#include <algorithm>
 #include <sstream>
 
 namespace fluxcache {
@@ -8,6 +11,7 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config) {
   std::ostringstream oss;
   oss << config.master_host << ":" << config.master_port;
   master_address_ = oss.str();
+  page_size_ = config.page_size > 0 ? config.page_size : 1024 * 1024;
   master_client_ =
       std::make_unique<MasterClient>(&pool_, master_address_, 10);
 }
@@ -57,6 +61,120 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
 void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {
   cached_ring_.Update(resp);
   ring_fetched_ = true;
+}
+
+StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
+                                            uint64_t offset, uint64_t size) {
+  auto fi_result = master_client_->GetFileInfo(path);
+  if (!fi_result.ok()) {
+    return fi_result.status();
+  }
+  const proto::GetFileInfoResponse& fi_resp = fi_result.value();
+  const proto::FileInfo& fi = fi_resp.file_info();
+
+  if (fi.is_directory()) {
+    return Status::InvalidArgument("cannot read directory");
+  }
+  uint64_t file_size = fi.size();
+  if (offset >= file_size) {
+    return std::string();
+  }
+  uint64_t end_offset = offset + size;
+  if (end_offset > file_size) {
+    size = file_size - offset;
+    end_offset = file_size;
+  }
+
+  size_t block_size = fi.block_size();
+  if (block_size == 0) {
+    return Status::InvalidArgument("invalid block_size from Master");
+  }
+  InodeId inode_id = fi.inode_id();
+  int64_t expected_mtime_ms = fi.ufs_mtime_ms();
+  const std::string& ufs_uri = fi_resp.ufs_uri();
+  const std::string& ufs_path = fi_resp.ufs_path();
+
+  if (ufs_uri.empty() || ufs_path.empty()) {
+    return Status::InvalidArgument("GetFileInfo missing ufs_uri/ufs_path");
+  }
+
+  proto::GetHashRingResponse ring_resp;
+  ring_resp.set_ring_version(fi_resp.ring_version());
+  for (const auto& w : fi_resp.workers()) {
+    *ring_resp.add_workers() = w;
+  }
+  cached_ring_.Update(ring_resp);
+  ring_fetched_ = true;
+
+  uint32_t first_block_idx =
+      static_cast<uint32_t>(offset / block_size);
+  uint32_t last_block_idx =
+      static_cast<uint32_t>((end_offset - 1) / block_size);
+
+  std::string result;
+  for (uint32_t bi = first_block_idx; bi <= last_block_idx; ++bi) {
+    BlockId block_id = MakeBlockId(inode_id, bi);
+    uint64_t block_start = static_cast<uint64_t>(bi) * block_size;
+    size_t block_len =
+        GetBlockLength(file_size, bi, static_cast<size_t>(block_size));
+    uint64_t block_end = block_start + block_len;
+
+    uint64_t overlap_start = std::max(offset, block_start);
+    uint64_t overlap_end = std::min(end_offset, block_end);
+    if (overlap_start >= overlap_end) continue;
+
+    uint64_t block_local_start = overlap_start - block_start;
+    uint64_t block_local_end = overlap_end - block_start;
+
+    uint32_t first_page = static_cast<uint32_t>(block_local_start / page_size_);
+    uint32_t last_page =
+        static_cast<uint32_t>((block_local_end - 1) / page_size_);
+
+    proto::ReadPagesRequest req;
+    req.set_block_id(block_id);
+    req.set_expected_mtime_ms(expected_mtime_ms);
+    req.set_ufs_uri(ufs_uri);
+    req.set_ufs_path(ufs_path);
+    for (uint32_t pi = first_page; pi <= last_page; ++pi) {
+      req.add_page_indices(pi);
+    }
+
+    auto worker_result = GetWorkerForBlock(block_id);
+    if (!worker_result.ok()) {
+      return worker_result.status();
+    }
+    auto client_result = GetWorkerClient(worker_result.value());
+    if (!client_result.ok()) {
+      return client_result.status();
+    }
+
+    proto::ReadPagesResponse read_resp;
+    Status s = client_result.value()->ReadPages(req, &read_resp);
+    if (!s.ok()) {
+      Status refresh_s = RefreshRing();
+      if (refresh_s.ok()) {
+        worker_result = GetWorkerForBlock(block_id);
+        if (worker_result.ok()) {
+          client_result = GetWorkerClient(worker_result.value());
+          if (client_result.ok()) {
+            s = client_result.value()->ReadPages(req, &read_resp);
+          }
+        }
+      }
+      if (!s.ok()) {
+        return s;
+      }
+    }
+
+    const std::string& data = read_resp.data();
+    size_t skip = block_local_start % page_size_;
+    size_t take = static_cast<size_t>(overlap_end - overlap_start);
+    if (skip < data.size() && take > 0) {
+      size_t available = data.size() - skip;
+      result += data.substr(skip, std::min(take, available));
+    }
+  }
+  return result;
 }
 
 }  // namespace fluxcache

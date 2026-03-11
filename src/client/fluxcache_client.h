@@ -26,6 +26,11 @@ class FluxCacheClient {
   /// Force refresh ring from Master. Returns Unavailable if Master unreachable.
   Status RefreshRing();
 
+  /// Read file data. Returns data at [offset, offset+size), clamped to file end.
+  /// Uses GetFileInfo, block/page split, Worker ReadPages, and retry on failure.
+  StatusOr<std::string> Read(const std::string& path, uint64_t offset,
+                            uint64_t size);
+
   MasterClient* GetMasterClient() { return master_client_.get(); }
   CachedHashRing* GetCachedHashRing() { return &cached_ring_; }
 
@@ -34,6 +39,7 @@ class FluxCacheClient {
 
  private:
   std::string master_address_;
+  size_t page_size_;
   ChannelPool pool_;
   std::unique_ptr<MasterClient> master_client_;
   CachedHashRing cached_ring_;

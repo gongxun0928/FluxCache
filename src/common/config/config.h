@@ -23,6 +23,8 @@ struct WorkerConfig {
 struct ClientConfig {
   std::string master_host;
   uint16_t master_port = 0;
+  /// Page size for block/page slicing. Must match Worker config. Default 1MB.
+  size_t page_size = 1024 * 1024;
 };
 
 struct UfsConfig {

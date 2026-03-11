@@ -22,6 +22,16 @@ class MasterClient {
   /// UNAVAILABLE.
   StatusOr<proto::GetHashRingResponse> GetHashRing();
 
+  /// Get file metadata from Master. Returns NotFound if path not found,
+  /// Unavailable on DEADLINE_EXCEEDED or UNAVAILABLE.
+  StatusOr<proto::GetFileInfoResponse> GetFileInfo(const std::string& path);
+
+  /// Mount UFS at path. For test/setup.
+  Status Mount(const std::string& path, const std::string& ufs_uri);
+
+  /// Register Worker. Returns worker_id. For test/setup.
+  StatusOr<uint64_t> RegisterWorker(const std::string& host, uint16_t port);
+
  private:
   ChannelPool* pool_;
   std::string master_address_;
