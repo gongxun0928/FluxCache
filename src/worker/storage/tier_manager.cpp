@@ -104,4 +104,35 @@ TierBlockHandle TierManager::RegisterRecoveredBlock(TierType tier_type,
   return result;
 }
 
+Status TierManager::AllocateInTier(TierType tier_type, size_t size,
+                                   TierBlockHandle* handle) {
+  if (!handle) {
+    return Status::InvalidArgument("null handle");
+  }
+  for (auto& tier : tiers_) {
+    if (tier->GetTierType() != tier_type) {
+      continue;
+    }
+    TierBlockHandle tier_handle;
+    Status s = tier->Allocate(size, &tier_handle);
+    if (s.ok()) {
+      uint64_t global_id = next_global_id_++;
+      handle_to_tier_[global_id] = {tier.get(), tier_handle};
+      handle->id = global_id;
+      return Status::OK();
+    }
+    return s;  // That tier failed (e.g. ResourceExhausted)
+  }
+  return Status::InvalidArgument("tier type not found");
+}
+
+StorageTier* TierManager::GetTier(TierType tier_type) const {
+  for (const auto& tier : tiers_) {
+    if (tier->GetTierType() == tier_type) {
+      return tier.get();
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace fluxcache

@@ -11,6 +11,8 @@ add_library(fluxcache_worker STATIC
   page/page_store.cpp
   cache/lru_policy.cpp
   cache/eviction_policy_factory.cpp
+  cache/tier_promoter.cpp
+  cache/tier_evictor.cpp
 )
 target_include_directories(fluxcache_worker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(fluxcache_worker PUBLIC fluxcache_common fluxcache_proto

@@ -5,6 +5,7 @@
 #include "worker/storage/storage_tier.h"
 
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -12,6 +13,7 @@
 
 namespace fluxcache {
 
+class EvictionPolicy;
 class MetaStore;
 
 // Page-level cache engine. Maintains PageId -> TierBlockHandle index and
@@ -20,8 +22,10 @@ class MetaStore;
 class PageStore {
  public:
   // tier: storage backend. meta_store: optional, for persistence.
+  // eviction_policy: optional, for OnInsert/OnAccess/OnRemove callbacks.
   explicit PageStore(StorageTier* tier, size_t page_size = 1024 * 1024,
-                    MetaStore* meta_store = nullptr);
+                    MetaStore* meta_store = nullptr,
+                    EvictionPolicy* eviction_policy = nullptr);
 
   // GetPage: returns data if hit and expected_mtime matches; on mismatch
   // deletes the stale page and returns NotFound.
@@ -39,6 +43,13 @@ class PageStore {
   // meta_store set. Cleans orphan MetaStore entries when tier file missing.
   void RecoverFromMetaStore();
 
+  // Returns the tier type for a page, or nullopt if not found.
+  std::optional<TierType> GetPageTier(PageId id) const;
+
+  // Relocates a page to the target tier. Requires tier to be TierManager.
+  // Does not notify EvictionPolicy (page remains in cache).
+  Status RelocatePage(PageId id, TierType target_tier);
+
  private:
   struct PageEntry {
     TierBlockHandle handle;
@@ -51,6 +62,7 @@ class PageStore {
 
   StorageTier* tier_;
   MetaStore* meta_store_;
+  EvictionPolicy* eviction_policy_;
   size_t page_size_;
   std::unordered_map<PageId, PageEntry> page_index_;
   std::unordered_map<BlockId, std::set<uint16_t>> block_to_pages_;

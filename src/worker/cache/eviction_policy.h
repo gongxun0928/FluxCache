@@ -3,6 +3,7 @@
 #include "common/types.h"
 
 #include <optional>
+#include <vector>
 
 namespace fluxcache {
 
@@ -28,6 +29,10 @@ class EvictionPolicy {
 
   // Returns the next page to evict, or nullopt if none.
   virtual std::optional<PageId> PickVictim() = 0;
+
+  // Returns pages ordered from MRU to LRU. Used by TierPromoter for promotion
+  // candidate selection. Default returns empty.
+  virtual std::vector<PageId> GetOrderedFromMru() const { return {}; }
 };
 
 }  // namespace fluxcache

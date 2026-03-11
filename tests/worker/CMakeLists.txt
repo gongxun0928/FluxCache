@@ -51,3 +51,9 @@ target_include_directories(meta_store_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(meta_store_test PRIVATE fluxcache_worker fluxcache_proto
                                                GTest::gtest_main)
 add_test(NAME meta_store_test COMMAND meta_store_test)
+
+add_executable(tier_promotion_test tier_promotion_test.cpp)
+target_include_directories(tier_promotion_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tier_promotion_test PRIVATE fluxcache_worker fluxcache_proto
+                                               GTest::gtest_main)
+add_test(NAME tier_promotion_test COMMAND tier_promotion_test)

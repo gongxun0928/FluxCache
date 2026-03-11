@@ -27,4 +27,8 @@ std::optional<PageId> LruPolicy::PickVictim() {
   return order_.back();
 }
 
+std::vector<PageId> LruPolicy::GetOrderedFromMru() const {
+  return std::vector<PageId>(order_.begin(), order_.end());
+}
+
 }  // namespace fluxcache

@@ -1,13 +1,16 @@
 #include "worker/page/page_store.h"
+#include "worker/cache/eviction_policy.h"
 #include "worker/meta/meta_store.h"
 #include "worker/storage/tier_manager.h"
 
-#include <algorithm>
-
 namespace fluxcache {
 
-PageStore::PageStore(StorageTier* tier, size_t page_size, MetaStore* meta_store)
-    : tier_(tier), meta_store_(meta_store), page_size_(page_size) {
+PageStore::PageStore(StorageTier* tier, size_t page_size, MetaStore* meta_store,
+                   EvictionPolicy* eviction_policy)
+    : tier_(tier),
+      meta_store_(meta_store),
+      eviction_policy_(eviction_policy),
+      page_size_(page_size) {
   if (page_size_ == 0) page_size_ = 1024 * 1024;
 }
 
@@ -44,7 +47,11 @@ Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
     return Status::NotFound("mtime mismatch, stale page removed");
   }
 
-  return tier_->Read(entry.handle, 0, page_size_, out);
+  Status s = tier_->Read(entry.handle, 0, page_size_, out);
+  if (s.ok() && eviction_policy_) {
+    eviction_policy_->OnAccess(id);
+  }
+  return s;
 }
 
 Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
@@ -60,6 +67,7 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
   // If page exists, delete it first to reclaim capacity.
   auto it = page_index_.find(id);
   if (it != page_index_.end()) {
+    if (eviction_policy_) eviction_policy_->OnRemove(id);
     Status s = tier_->Release(it->second.handle);
     if (!s.ok()) return s;
     RemoveFromBlockIndex(id);
@@ -79,6 +87,7 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
   page_index_[id] = PageEntry{handle, mtime_ms};
   block_to_pages_[id.block_id].insert(id.page_index);
   SyncMetaPut(id, page_index_[id]);
+  if (eviction_policy_) eviction_policy_->OnInsert(id);
   return Status::OK();
 }
 
@@ -89,6 +98,7 @@ Status PageStore::DeletePage(PageId id) {
     return Status::OK();
   }
 
+  if (eviction_policy_) eviction_policy_->OnRemove(id);
   Status s = tier_->Release(it->second.handle);
   if (!s.ok()) return s;
   RemoveFromBlockIndex(id);
@@ -130,6 +140,7 @@ void PageStore::RecoverFromMetaStore() {
     if (handle.valid()) {
       page_index_[id] = PageEntry{handle, meta.cached_mtime_ms};
       block_to_pages_[id.block_id].insert(id.page_index);
+      if (eviction_policy_) eviction_policy_->OnInsert(id);
     } else {
       meta_store_->Delete(id);  // Clean orphan: tier file missing
     }
@@ -143,6 +154,49 @@ void PageStore::RemoveFromBlockIndex(PageId id) {
   if (it->second.empty()) {
     block_to_pages_.erase(it);
   }
+}
+
+std::optional<TierType> PageStore::GetPageTier(PageId id) const {
+  auto it = page_index_.find(id);
+  if (it == page_index_.end()) return std::nullopt;
+  TierType tt;
+  uint64_t tier_block_id;
+  if (!tier_->GetBlockTierInfo(it->second.handle.id, &tt, &tier_block_id)) {
+    return std::nullopt;
+  }
+  return tt;
+}
+
+Status PageStore::RelocatePage(PageId id, TierType target_tier) {
+  auto* tm = dynamic_cast<TierManager*>(tier_);
+  if (!tm) {
+    return Status::InvalidArgument("RelocatePage requires TierManager");
+  }
+
+  auto it = page_index_.find(id);
+  if (it == page_index_.end()) {
+    return Status::NotFound("page not found");
+  }
+
+  std::string data;
+  Status s = tier_->Read(it->second.handle, 0, page_size_, &data);
+  if (!s.ok()) return s;
+
+  TierBlockHandle new_handle;
+  s = tm->AllocateInTier(target_tier, page_size_, &new_handle);
+  if (!s.ok()) return s;
+
+  s = tm->Write(new_handle, 0, data);
+  if (!s.ok()) {
+    tm->Release(new_handle);
+    return s;
+  }
+
+  TierBlockHandle old_handle = it->second.handle;
+  int64_t mtime_ms = it->second.mtime_ms;
+  page_index_[id] = PageEntry{new_handle, mtime_ms};
+  SyncMetaPut(id, page_index_[id]);
+  return tier_->Release(old_handle);
 }
 
 }  // namespace fluxcache

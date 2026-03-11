@@ -3,6 +3,7 @@
 #include "worker/cache/eviction_policy.h"
 
 #include <list>
+#include <vector>
 #include <unordered_map>
 
 namespace fluxcache {
@@ -15,6 +16,7 @@ class LruPolicy : public EvictionPolicy {
   void OnAccess(PageId id) override;
   void OnRemove(PageId id) override;
   std::optional<PageId> PickVictim() override;
+  std::vector<PageId> GetOrderedFromMru() const override;
 
  private:
   std::list<PageId> order_;  // front = MRU, back = LRU

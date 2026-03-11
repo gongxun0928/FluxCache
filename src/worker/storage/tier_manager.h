@@ -39,6 +39,13 @@ class TierManager : public StorageTier {
   TierBlockHandle RegisterRecoveredBlock(TierType tier_type,
                                         uint64_t tier_block_id);
 
+  // Allocates in a specific tier. Returns ResourceExhausted if that tier is full.
+  Status AllocateInTier(TierType tier_type, size_t size,
+                       TierBlockHandle* handle);
+
+  // Returns the StorageTier for the given type, or nullptr if not found.
+  StorageTier* GetTier(TierType tier_type) const;
+
  private:
   struct HandleMapping {
     StorageTier* tier{nullptr};
