@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include <memory>
 #include <string>
@@ -20,8 +21,10 @@ class WorkerClient {
   /// @param pool Channel pool (must outlive this client).
   /// @param worker_address "host:port".
   /// @param deadline_sec RPC deadline in seconds (default 10).
+  /// @param retry_policy Retry policy for idempotent RPCs (ReadPages only).
   WorkerClient(ChannelPool* pool, const std::string& worker_address,
-               int deadline_sec = 10);
+               int deadline_sec = 10,
+               const RetryPolicy& retry_policy = RetryPolicy{});
 
   /// Read pages from Worker. Returns Unavailable on DEADLINE_EXCEEDED or
   /// UNAVAILABLE.
@@ -37,6 +40,7 @@ class WorkerClient {
   ChannelPool* pool_;
   std::string worker_address_;
   int deadline_sec_;
+  RetryPolicy retry_policy_;
 };
 
 }  // namespace fluxcache

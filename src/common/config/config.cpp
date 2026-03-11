@@ -84,6 +84,34 @@ void OptionalUint32(const YAML::Node& node, uint32_t default_val,
   *out = default_val;
 }
 
+void OptionalSizeT(const YAML::Node& node, size_t default_val, size_t* out) {
+  if (node && node.IsDefined()) {
+    try {
+      int val = node.as<int>();
+      if (val > 0) {
+        *out = static_cast<size_t>(val);
+        return;
+      }
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
+void OptionalInt(const YAML::Node& node, int default_val, int* out) {
+  if (node && node.IsDefined()) {
+    try {
+      int val = node.as<int>();
+      if (val >= 0) {
+        *out = val;
+        return;
+      }
+    } catch (const YAML::BadConversion&) {
+    }
+  }
+  *out = default_val;
+}
+
 }  // namespace
 
 StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
@@ -156,6 +184,10 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
       !s.ok()) {
     return s;
   }
+  OptionalSizeT(client["channel_pool_size"], 4, &cfg.client.channel_pool_size);
+  OptionalInt(client["retry_max_attempts"], 3, &cfg.client.retry_max_attempts);
+  OptionalInt(client["retry_initial_delay_ms"], 50,
+               &cfg.client.retry_initial_delay_ms);
 
   // ufs
   YAML::Node ufs = fluxcache["ufs"];

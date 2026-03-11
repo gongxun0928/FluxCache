@@ -5,6 +5,7 @@
 #include "client/worker_client.h"
 #include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include <memory>
 #include <string_view>
@@ -47,6 +48,7 @@ class FluxCacheClient {
  private:
   std::string master_address_;
   size_t page_size_;
+  RetryPolicy retry_policy_;
   ChannelPool pool_;
   std::unique_ptr<MasterClient> master_client_;
   CachedHashRing cached_ring_;

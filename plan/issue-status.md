@@ -99,7 +99,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P2-08 | ChannelPool 完整实现与幂等重试边界 | P1 | P1-04, P1-14D, P1-15D | created | | |
+| P2-08 | ChannelPool 完整实现与幂等重试边界 | P1 | P1-04, P1-14D, P1-15D | completed | | 2026-03-11 实现并验证 |
 
 ## Phase F：多层缓存与淘汰
 
@@ -113,7 +113,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P1-12 | CLI smoke 工具 | P2 | P1-14D, P1-15D | created | | |
+| P1-12 | CLI smoke 工具 | P2 | P1-14D, P1-15D | completed | | 2026-03-11 实现并验证 |
 | P2-09 | C++ SDK MVP（不含 rename / 目录变更） | P1 | P1-14D, P1-15D, P2-08 | created | | |
 | P2-11 | Client 本地 Page 内存缓存 | P1 | P2-09, P1-16 | created | | |
 | P2-06 | FUSE 挂载基础能力 | P1 | P2-09 | created | | |

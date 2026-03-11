@@ -6,23 +6,28 @@
 namespace fluxcache {
 
 MasterClient::MasterClient(ChannelPool* pool, const std::string& master_address,
-                           int deadline_sec)
-    : pool_(pool), master_address_(master_address), deadline_sec_(deadline_sec) {
-}
+                           int deadline_sec, const RetryPolicy& retry_policy)
+    : pool_(pool),
+      master_address_(master_address),
+      deadline_sec_(deadline_sec),
+      retry_policy_(retry_policy) {}
 
-StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
-  auto channel = pool_->GetChannel(master_address_);
+namespace {
+
+StatusOr<fluxcache::proto::GetHashRingResponse> DoGetHashRing(
+    fluxcache::ChannelPool* pool, const std::string& address, int deadline_sec) {
+  auto channel = pool->GetChannel(address);
   if (!channel) {
-    return Status::Unavailable("failed to get channel for master");
+    return fluxcache::Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline_sec));
 
-  proto::GetHashRingRequest req;
-  proto::GetHashRingResponse resp;
+  fluxcache::proto::GetHashRingRequest req;
+  fluxcache::proto::GetHashRingResponse resp;
 
   auto grpc_status = stub.GetHashRing(&ctx, req, &resp);
 
@@ -32,26 +37,38 @@ StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
 
   if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
       grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
-    return Status::Unavailable(grpc_status.error_message().c_str());
+    return fluxcache::Status::Unavailable(grpc_status.error_message().c_str());
   }
-  return Status::IOError(grpc_status.error_message().c_str());
+  return fluxcache::Status::IOError(grpc_status.error_message().c_str());
 }
 
-StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
+}  // namespace
+
+StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
+  RetryPolicy p = retry_policy_;
+  p.is_idempotent = true;
+  return ExecuteWithRetry<proto::GetHashRingResponse>(
+      p, [this]() { return DoGetHashRing(pool_, master_address_, deadline_sec_); });
+}
+
+namespace {
+
+StatusOr<fluxcache::proto::GetFileInfoResponse> DoGetFileInfo(
+    fluxcache::ChannelPool* pool, const std::string& address, int deadline_sec,
     const std::string& path) {
-  auto channel = pool_->GetChannel(master_address_);
+  auto channel = pool->GetChannel(address);
   if (!channel) {
-    return Status::Unavailable("failed to get channel for master");
+    return fluxcache::Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline_sec));
 
-  proto::GetFileInfoRequest req;
+  fluxcache::proto::GetFileInfoRequest req;
   req.set_path(path);
-  proto::GetFileInfoResponse resp;
+  fluxcache::proto::GetFileInfoResponse resp;
 
   auto grpc_status = stub.GetFileInfo(&ctx, req, &resp);
 
@@ -61,12 +78,23 @@ StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
 
   if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
       grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
-    return Status::Unavailable(grpc_status.error_message().c_str());
+    return fluxcache::Status::Unavailable(grpc_status.error_message().c_str());
   }
   if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
-    return Status::NotFound(grpc_status.error_message().c_str());
+    return fluxcache::Status::NotFound(grpc_status.error_message().c_str());
   }
-  return Status::IOError(grpc_status.error_message().c_str());
+  return fluxcache::Status::IOError(grpc_status.error_message().c_str());
+}
+
+}  // namespace
+
+StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
+    const std::string& path) {
+  RetryPolicy p = retry_policy_;
+  p.is_idempotent = true;
+  return ExecuteWithRetry<proto::GetFileInfoResponse>(p, [this, path]() {
+    return DoGetFileInfo(pool_, master_address_, deadline_sec_, path);
+  });
 }
 
 StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
@@ -162,6 +190,66 @@ Status MasterClient::Mount(const std::string& path,
     return Status::IOError(grpc_status.error_message().c_str());
   }
   return Status::OK();
+}
+
+Status MasterClient::Unmount(const std::string& path) {
+  auto channel = pool_->GetChannel(master_address_);
+  if (!channel) {
+    return Status::Unavailable("failed to get channel for master");
+  }
+
+  fluxcache::proto::MasterService::Stub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() +
+                   std::chrono::seconds(deadline_sec_));
+
+  proto::UnmountRequest req;
+  req.set_path(path);
+  proto::UnmountResponse resp;
+
+  auto grpc_status = stub.Unmount(&ctx, req, &resp);
+  if (!grpc_status.ok()) {
+    if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+      return Status::NotFound(grpc_status.error_message().c_str());
+    }
+    if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+        grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+      return Status::Unavailable(grpc_status.error_message().c_str());
+    }
+    return Status::IOError(grpc_status.error_message().c_str());
+  }
+  return Status::OK();
+}
+
+StatusOr<std::vector<std::string>> MasterClient::ListMounts() {
+  auto channel = pool_->GetChannel(master_address_);
+  if (!channel) {
+    return Status::Unavailable("failed to get channel for master");
+  }
+
+  fluxcache::proto::MasterService::Stub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() +
+                   std::chrono::seconds(deadline_sec_));
+
+  proto::ListMountsRequest req;
+  proto::ListMountsResponse resp;
+
+  auto grpc_status = stub.ListMounts(&ctx, req, &resp);
+  if (!grpc_status.ok()) {
+    if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+        grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+      return Status::Unavailable(grpc_status.error_message().c_str());
+    }
+    return Status::IOError(grpc_status.error_message().c_str());
+  }
+
+  std::vector<std::string> paths;
+  paths.reserve(resp.paths_size());
+  for (int i = 0; i < resp.paths_size(); ++i) {
+    paths.push_back(resp.paths(i));
+  }
+  return paths;
 }
 
 StatusOr<uint64_t> MasterClient::RegisterWorker(const std::string& host,

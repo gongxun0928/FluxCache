@@ -3,17 +3,20 @@
 #include "master.pb.h"
 #include "worker.pb.h"
 #include <algorithm>
-#include <sstream>
 
 namespace fluxcache {
 
-FluxCacheClient::FluxCacheClient(const ClientConfig& config) {
-  std::ostringstream oss;
-  oss << config.master_host << ":" << config.master_port;
-  master_address_ = oss.str();
-  page_size_ = config.page_size > 0 ? config.page_size : 1024 * 1024;
-  master_client_ =
-      std::make_unique<MasterClient>(&pool_, master_address_, 10);
+FluxCacheClient::FluxCacheClient(const ClientConfig& config)
+    : master_address_(config.master_host + ":" +
+                      std::to_string(config.master_port)),
+      page_size_(config.page_size > 0 ? config.page_size : 1024 * 1024),
+      retry_policy_(RetryPolicyFromConfig(config)),
+      pool_(ChannelPoolOptions{config.channel_pool_size > 0
+                                  ? config.channel_pool_size
+                                  : 4}),
+      ring_fetched_(false) {
+  master_client_ = std::make_unique<MasterClient>(
+      &pool_, master_address_, 10, retry_policy_);
 }
 
 Status FluxCacheClient::RefreshRing() {
@@ -55,7 +58,7 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
     return Status::NotFound("worker not in ring");
   }
 
-  return std::make_unique<WorkerClient>(&pool_, addr, 10);
+  return std::make_unique<WorkerClient>(&pool_, addr, 10, retry_policy_);
 }
 
 void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {

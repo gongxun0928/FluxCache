@@ -11,5 +11,11 @@ target_link_libraries(types_test PRIVATE fluxcache_common GTest::gtest_main)
 add_test(NAME types_test COMMAND types_test)
 
 add_executable(channel_pool_test channel_pool_test.cpp)
-target_link_libraries(channel_pool_test PRIVATE fluxcache_proto GTest::gtest_main)
+target_link_libraries(channel_pool_test PRIVATE fluxcache_common fluxcache_proto
+                                                      GTest::gtest_main)
 add_test(NAME channel_pool_test COMMAND channel_pool_test)
+
+add_executable(channel_pool_retry_test channel_pool_retry_test.cpp)
+target_link_libraries(channel_pool_retry_test PRIVATE fluxcache_common
+                                                      GTest::gtest_main)
+add_test(NAME channel_pool_retry_test COMMAND channel_pool_retry_test)

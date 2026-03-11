@@ -126,6 +126,34 @@ TEST(ConfigTest, EmptyYaml) {
   EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ConfigTest, ClientChannelPoolAndRetryOptionalFields) {
+  const char* yaml = R"(
+fluxcache:
+  master:
+    host: "127.0.0.1"
+    port: 9090
+  worker:
+    data_dir: "/tmp/fluxcache_worker"
+  client:
+    master_host: "127.0.0.1"
+    master_port: 9090
+    channel_pool_size: 8
+    retry_max_attempts: 5
+    retry_initial_delay_ms: 100
+  ufs:
+    type: "localfs"
+    path: "/tmp/fluxcache_ufs"
+)";
+  std::string path = WriteTempYaml(yaml);
+  auto result = LoadConfig(path);
+  std::remove(path.c_str());
+
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  EXPECT_EQ(result.value().client.channel_pool_size, 8u);
+  EXPECT_EQ(result.value().client.retry_max_attempts, 5);
+  EXPECT_EQ(result.value().client.retry_initial_delay_ms, 100);
+}
+
 TEST(ConfigTest, UfsTypeNotLocalfs) {
   const char* yaml = R"(
 fluxcache:

@@ -25,6 +25,12 @@ struct ClientConfig {
   uint16_t master_port = 0;
   /// Page size for block/page slicing. Must match Worker config. Default 1MB.
   size_t page_size = 1024 * 1024;
+  /// Channels per address in ChannelPool. Default 4.
+  size_t channel_pool_size = 4;
+  /// Max retry attempts for idempotent RPCs. Default 3.
+  int retry_max_attempts = 3;
+  /// Initial delay between retries in ms. Default 50.
+  int retry_initial_delay_ms = 50;
 };
 
 struct UfsConfig {

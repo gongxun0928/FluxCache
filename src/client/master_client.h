@@ -2,11 +2,13 @@
 
 #include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include "master.pb.h"
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace fluxcache {
 
@@ -16,8 +18,10 @@ class MasterClient {
   /// @param pool Channel pool (must outlive this client).
   /// @param master_address "host:port".
   /// @param deadline_sec RPC deadline in seconds (default 10).
+  /// @param retry_policy Retry policy for idempotent RPCs (default: 3 retries).
   MasterClient(ChannelPool* pool, const std::string& master_address,
-               int deadline_sec = 10);
+               int deadline_sec = 10,
+               const RetryPolicy& retry_policy = RetryPolicy{});
 
   /// Get hash ring from Master. Returns Unavailable on DEADLINE_EXCEEDED or
   /// UNAVAILABLE.
@@ -37,6 +41,12 @@ class MasterClient {
   /// Mount UFS at path. For test/setup.
   Status Mount(const std::string& path, const std::string& ufs_uri);
 
+  /// Unmount path. Returns NotFound if path not mounted.
+  Status Unmount(const std::string& path);
+
+  /// List all mount paths. Returns empty vector if none.
+  StatusOr<std::vector<std::string>> ListMounts();
+
   /// Register Worker. Returns worker_id. For test/setup.
   StatusOr<uint64_t> RegisterWorker(const std::string& host, uint16_t port);
 
@@ -44,6 +54,7 @@ class MasterClient {
   ChannelPool* pool_;
   std::string master_address_;
   int deadline_sec_;
+  RetryPolicy retry_policy_;
 };
 
 }  // namespace fluxcache

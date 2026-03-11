@@ -4,14 +4,15 @@
 #include <gtest/gtest.h>
 #include <atomic>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace fluxcache {
 
-TEST(ChannelPoolTest, SameAddressReturnsSameChannel) {
-  ChannelPool pool;
+TEST(ChannelPoolTest, SameAddressReturnsSameChannelWhenPoolSizeOne) {
+  ChannelPool pool(ChannelPoolOptions{1});
   const std::string address = "127.0.0.1:9090";
 
   auto ch1 = pool.GetChannel(address);
@@ -20,6 +21,41 @@ TEST(ChannelPoolTest, SameAddressReturnsSameChannel) {
   ASSERT_NE(ch1, nullptr);
   ASSERT_NE(ch2, nullptr);
   EXPECT_EQ(ch1.get(), ch2.get());
+}
+
+TEST(ChannelPoolTest, PoolSizeConfigurableRoundRobin) {
+  ChannelPoolOptions opts;
+  opts.pool_size_per_address = 4;
+  ChannelPool pool(opts);
+  const std::string address = "127.0.0.1:9090";
+
+  std::vector<grpc::Channel*> seen;
+  for (int i = 0; i < 8; ++i) {
+    auto ch = pool.GetChannel(address);
+    ASSERT_NE(ch, nullptr);
+    seen.push_back(ch.get());
+  }
+  EXPECT_EQ(seen[0], seen[4]) << "Round-robin cycles every pool_size";
+  EXPECT_EQ(seen[1], seen[5]);
+  EXPECT_EQ(seen[2], seen[6]);
+  EXPECT_EQ(seen[3], seen[7]);
+}
+
+TEST(ChannelPoolTest, WarmupPreCreatesChannels) {
+  ChannelPoolOptions opts;
+  opts.pool_size_per_address = 3;
+  ChannelPool pool(opts);
+  const std::string address = "127.0.0.1:9092";
+
+  pool.Warmup(address);
+
+  std::set<grpc::Channel*> unique;
+  for (int i = 0; i < 3; ++i) {
+    auto ch = pool.GetChannel(address);
+    ASSERT_NE(ch, nullptr);
+    unique.insert(ch.get());
+  }
+  EXPECT_EQ(unique.size(), 3u) << "Warmup creates pool_size distinct channels";
 }
 
 TEST(ChannelPoolTest, DifferentAddressesReturnDifferentChannels) {
@@ -36,7 +72,7 @@ TEST(ChannelPoolTest, DifferentAddressesReturnDifferentChannels) {
 }
 
 TEST(ChannelPoolTest, ThreadSafeConcurrentGetSameAddress) {
-  ChannelPool pool;
+  ChannelPool pool(ChannelPoolOptions{1});
   const std::string address = "127.0.0.1:9100";
   constexpr int kNumThreads = 8;
   constexpr int kGetsPerThread = 100;
@@ -117,6 +153,17 @@ TEST(ChannelPoolTest, ChannelUsableForWorkerStub) {
 
   auto stub = fluxcache::proto::WorkerService::NewStub(channel);
   EXPECT_NE(stub, nullptr);
+}
+
+TEST(ChannelPoolTest, EvictUnhealthyDoesNotCrash) {
+  ChannelPool pool(ChannelPoolOptions{2});
+  const std::string address = "127.0.0.1:9093";
+
+  pool.Warmup(address);
+  pool.EvictUnhealthy(address);
+
+  auto ch = pool.GetChannel(address);
+  EXPECT_NE(ch, nullptr) << "GetChannel after EvictUnhealthy should work";
 }
 
 }  // namespace fluxcache
