@@ -5,11 +5,13 @@ fluxcache:
   master:
     host: "127.0.0.1"
     port: 9090
+    metrics_port: 9092  # optional, 0 = disabled
   worker:
     data_dir: "/tmp/fluxcache_worker"
     host: "0.0.0.0"
     port: 9091
     heartbeat_interval_ms: 5000
+    metrics_port: 9093  # optional, 0 = disabled
   client:
     master_host: "127.0.0.1"
     master_port: 9090

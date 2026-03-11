@@ -151,6 +151,7 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
     return s;
   }
   OptionalString(master["db_path"], "./fluxcache_meta", &cfg.master.db_path);
+  OptionalUint16(master["metrics_port"], 0, &cfg.master.metrics_port);
 
   // worker
   YAML::Node worker = fluxcache["worker"];
@@ -166,6 +167,7 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
   OptionalUint16(worker["port"], 0, &cfg.worker.port);
   OptionalUint32(worker["heartbeat_interval_ms"], 5000,
                  &cfg.worker.heartbeat_interval_ms);
+  OptionalUint16(worker["metrics_port"], 0, &cfg.worker.metrics_port);
 
   // client
   YAML::Node client = fluxcache["client"];

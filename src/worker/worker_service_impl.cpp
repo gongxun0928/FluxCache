@@ -1,17 +1,35 @@
 #include "worker/worker_service_impl.h"
 
+#include "common/metrics/metrics_registry.h"
 #include "common/status.h"
 #include "common/types.h"
 #include "ufs/ufs.h"
 #include "ufs/ufs_factory.h"
 #include "worker/page/page_store.h"
 
+#include <chrono>
 #include <grpcpp/grpcpp.h>
 #include <string>
 
 namespace fluxcache {
 
 namespace {
+
+struct RpcMetricsGuard {
+  MetricsRegistry* m;
+  std::string method;
+  std::chrono::steady_clock::time_point start;
+  RpcMetricsGuard(MetricsRegistry* m, const char* method)
+      : m(m), method(method), start(std::chrono::steady_clock::now()) {}
+  ~RpcMetricsGuard() {
+    if (m) {
+      auto sec = std::chrono::duration<double>(
+                     std::chrono::steady_clock::now() - start)
+                     .count();
+      m->ObserveLatency("worker", method, sec);
+    }
+  }
+};
 
 bool ParseUfsUri(const std::string& ufs_uri, std::string* scheme,
                   std::string* authority) {
@@ -31,13 +49,19 @@ bool ParseUfsUri(const std::string& ufs_uri, std::string* scheme,
 }  // namespace
 
 WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
-                                     size_t block_size)
-    : page_store_(page_store), page_size_(page_size), block_size_(block_size) {}
+                                     size_t block_size,
+                                     MetricsRegistry* metrics)
+    : page_store_(page_store),
+      page_size_(page_size),
+      block_size_(block_size),
+      metrics_(metrics) {}
 
 ::grpc::Status WorkerServiceImpl::ReadPages(
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::ReadPagesRequest* request,
     ::fluxcache::proto::ReadPagesResponse* response) {
+  if (metrics_) metrics_->IncCounter("worker", "ReadPages");
+  RpcMetricsGuard _guard(metrics_, "ReadPages");
   if (!request || !response) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -111,6 +135,8 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::WritePagesRequest* request,
     ::fluxcache::proto::WritePagesResponse* response) {
+  if (metrics_) metrics_->IncCounter("worker", "WritePages");
+  RpcMetricsGuard _guard(metrics_, "WritePages");
   if (!request) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -202,6 +228,8 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::HeartbeatRequest* /*request*/,
     ::fluxcache::proto::HeartbeatResponse* response) {
+  if (metrics_) metrics_->IncCounter("worker", "Heartbeat");
+  RpcMetricsGuard _guard(metrics_, "Heartbeat");
   (void)response;
   return ::grpc::Status::OK;
 }

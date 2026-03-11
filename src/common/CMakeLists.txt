@@ -1,6 +1,8 @@
 add_library(fluxcache_common STATIC
   status.cpp
   config/config.cpp
+  metrics/metrics_registry.cpp
+  metrics/http_metrics_server.cpp
   rpc/channel_pool.cpp
   rpc/retry_policy.cpp
 )

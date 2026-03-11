@@ -19,3 +19,7 @@ add_executable(channel_pool_retry_test channel_pool_retry_test.cpp)
 target_link_libraries(channel_pool_retry_test PRIVATE fluxcache_common
                                                       GTest::gtest_main)
 add_test(NAME channel_pool_retry_test COMMAND channel_pool_retry_test)
+
+add_executable(metrics_test metrics_test.cpp)
+target_link_libraries(metrics_test PRIVATE fluxcache_common GTest::gtest_main)
+add_test(NAME metrics_test COMMAND metrics_test)

@@ -1,4 +1,5 @@
 #include "master/master_service_impl.h"
+#include "common/metrics/metrics_registry.h"
 #include "common/status.h"
 #include <chrono>
 #include <grpcpp/grpcpp.h>
@@ -8,6 +9,22 @@
 namespace fluxcache {
 
 namespace {
+
+struct RpcMetricsGuard {
+  MetricsRegistry* m;
+  std::string method;
+  std::chrono::steady_clock::time_point start;
+  RpcMetricsGuard(MetricsRegistry* m, const char* method)
+      : m(m), method(method), start(std::chrono::steady_clock::now()) {}
+  ~RpcMetricsGuard() {
+    if (m) {
+      auto sec = std::chrono::duration<double>(
+                     std::chrono::steady_clock::now() - start)
+                     .count();
+      m->ObserveLatency("master", method, sec);
+    }
+  }
+};
 
 int64_t NowMs() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -42,8 +59,10 @@ std::string Dirname(const std::string& path) {
 
 }  // namespace
 
-MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
+MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree,
+                                     MetricsRegistry* metrics)
     : inode_tree_(inode_tree),
+      metrics_(metrics),
       path_resolver_(inode_tree, &mount_table_),
       hash_ring_manager_([this](WorkerId id) {
         return worker_manager_.GetWorkerState(id);
@@ -58,6 +77,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::GetHashRingRequest* /*request*/,
     ::fluxcache::proto::GetHashRingResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "GetHashRing");
+  RpcMetricsGuard _guard(metrics_, "GetHashRing");
   auto snap = hash_ring_manager_.GetRingSnapshot(
       [this](WorkerId id) -> std::optional<WorkerEndpointInfo> {
         auto info = worker_manager_.GetWorker(id);
@@ -83,6 +104,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::RegisterWorkerRequest* request,
     ::fluxcache::proto::RegisterWorkerResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "RegisterWorker");
+  RpcMetricsGuard _guard(metrics_, "RegisterWorker");
   if (!request->has_endpoint()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "RegisterWorker: endpoint is required");
@@ -123,6 +146,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::GetFileInfoRequest* request,
     ::fluxcache::proto::GetFileInfoResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "GetFileInfo");
+  RpcMetricsGuard _guard(metrics_, "GetFileInfo");
   if (!request || request->path().empty()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "GetFileInfo: path is required");
@@ -186,6 +211,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::CreateFileRequest* request,
     ::fluxcache::proto::CreateFileResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "CreateFile");
+  RpcMetricsGuard _guard(metrics_, "CreateFile");
   if (!request || request->path().empty()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "CreateFile: path is required");
@@ -246,6 +273,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::CompleteFileRequest* request,
     ::fluxcache::proto::CompleteFileResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "CompleteFile");
+  RpcMetricsGuard _guard(metrics_, "CompleteFile");
   if (!request || request->inode_id() == 0) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "CompleteFile: inode_id is required");
@@ -280,6 +309,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::DeleteFileRequest* /*request*/,
     ::fluxcache::proto::DeleteFileResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "DeleteFile");
+  RpcMetricsGuard _guard(metrics_, "DeleteFile");
   return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "DeleteFile not implemented");
 }
 
@@ -287,6 +318,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::MountRequest* request,
     ::fluxcache::proto::MountResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "Mount");
+  RpcMetricsGuard _guard(metrics_, "Mount");
   if (!request || request->path().empty()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "Mount: path is required");
@@ -303,6 +336,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::UnmountRequest* request,
     ::fluxcache::proto::UnmountResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "Unmount");
+  RpcMetricsGuard _guard(metrics_, "Unmount");
   if (!request || request->path().empty()) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
                           "Unmount: path is required");
@@ -319,6 +354,8 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::ListMountsRequest* /*request*/,
     ::fluxcache::proto::ListMountsResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "ListMounts");
+  RpcMetricsGuard _guard(metrics_, "ListMounts");
   if (!response) return ::grpc::Status(::grpc::StatusCode::INTERNAL, "null response");
   auto paths = mount_table_.ListMounts();
   response->clear_paths();

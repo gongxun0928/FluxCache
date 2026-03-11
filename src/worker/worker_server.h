@@ -9,6 +9,8 @@
 
 namespace fluxcache {
 
+class HttpMetricsServer;
+class MetricsRegistry;
 class WorkerServiceImpl;
 
 // gRPC server wrapper for Worker process. Manages lifecycle: Start, Shutdown.
@@ -29,7 +31,9 @@ class WorkerServer {
   WorkerConfig config_;
   std::unique_ptr<MemoryTier> memory_tier_;
   std::unique_ptr<PageStore> page_store_;
+  std::unique_ptr<MetricsRegistry> metrics_registry_;
   std::unique_ptr<WorkerServiceImpl> service_impl_;
+  std::unique_ptr<HttpMetricsServer> http_metrics_server_;
   std::unique_ptr<::grpc::Server> server_;
 };
 

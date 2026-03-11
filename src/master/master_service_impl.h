@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/metrics/metrics_registry.h"
 #include "common/status.h"
 #include "master.grpc.pb.h"
 #include "master/hash_ring_manager.h"
@@ -15,7 +16,8 @@ namespace fluxcache {
 // MasterService implementation with WorkerManager and HashRingManager (P1-05C).
 class MasterServiceImpl : public proto::MasterService::Service {
  public:
-  explicit MasterServiceImpl(InodeTree* inode_tree = nullptr);
+  explicit MasterServiceImpl(InodeTree* inode_tree = nullptr,
+                            MetricsRegistry* metrics = nullptr);
 
   ::grpc::Status GetHashRing(::grpc::ServerContext* context,
                              const ::fluxcache::proto::GetHashRingRequest* request,
@@ -56,6 +58,7 @@ class MasterServiceImpl : public proto::MasterService::Service {
   static ::grpc::Status ToGrpcStatus(const Status& s);
 
   InodeTree* inode_tree_;
+  MetricsRegistry* metrics_;
   PathResolver path_resolver_;
   std::atomic<uint64_t> next_worker_id_{1};
   WorkerManager worker_manager_;

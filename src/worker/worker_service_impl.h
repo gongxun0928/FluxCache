@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/metrics/metrics_registry.h"
 #include "worker.grpc.pb.h"
 #include <atomic>
 #include <cstddef>
@@ -13,7 +14,8 @@ class PageStore;
 // returns UNIMPLEMENTED; Heartbeat returns empty response.
 class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
-  WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size);
+  WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size,
+                    MetricsRegistry* metrics = nullptr);
 
   ::grpc::Status ReadPages(::grpc::ServerContext* context,
                            const ::fluxcache::proto::ReadPagesRequest* request,
@@ -31,6 +33,7 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
   PageStore* page_store_;
   size_t page_size_;
   size_t block_size_;
+  MetricsRegistry* metrics_;
 };
 
 }  // namespace fluxcache

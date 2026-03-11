@@ -137,7 +137,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P1-13 | Metrics 基础导出 | P2 | P1-05A, P1-06 | created | | |
+| P1-13 | Metrics 基础导出 | P2 | P1-05A, P1-06 | completed | | 2026-03-11 实现并验证 |
 | P3-02 | PageStore 并发优化 | P1 | P1-10 | created | | |
 | P3-03 | 批量 RPC 与顺序读 pipeline | P1 | P1-14D, P2-08 | created | | |
 | P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | created | | |

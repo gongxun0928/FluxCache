@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/status.h"
+#include "common/status_or.h"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -11,6 +12,7 @@ struct MasterConfig {
   std::string host;
   uint16_t port = 0;
   std::string db_path = "./fluxcache_meta";  // RocksDB path for InodeStore
+  uint16_t metrics_port = 0;  // 0 = disabled
 };
 
 struct WorkerConfig {
@@ -18,6 +20,7 @@ struct WorkerConfig {
   std::string host = "0.0.0.0";
   uint16_t port = 0;
   uint32_t heartbeat_interval_ms = 5000;
+  uint16_t metrics_port = 0;  // 0 = disabled
 };
 
 struct ClientConfig {
@@ -43,21 +46,6 @@ struct FluxCacheConfig {
   WorkerConfig worker;
   ClientConfig client;
   UfsConfig ufs;
-};
-
-template <typename T>
-class StatusOr {
- public:
-  StatusOr(T value) : status_(Status::OK()), value_(std::move(value)) {}
-  StatusOr(Status status) : status_(std::move(status)) {}
-  bool ok() const { return status_.ok(); }
-  const T& value() const { return *value_; }
-  T& value() { return *value_; }
-  const Status& status() const { return status_; }
-
- private:
-  Status status_;
-  std::optional<T> value_;
 };
 
 StatusOr<FluxCacheConfig> LoadConfig(const std::string& path);
