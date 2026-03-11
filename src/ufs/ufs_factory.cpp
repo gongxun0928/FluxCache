@@ -1,6 +1,8 @@
 #include "ufs/ufs_factory.h"
 #include "ufs/fake_ufs.h"
+#include "ufs/hdfs_ufs.h"
 #include "ufs/local_ufs.h"
+#include "ufs/s3_ufs.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -28,6 +30,14 @@ Status CreateUFS(const std::string& scheme, const std::string& authority,
 
   if (scheme == "local" || scheme == "file" || scheme == "localfs") {
     *out = std::make_unique<LocalUFS>(authority);
+    return Status::OK();
+  }
+  if (scheme == "s3") {
+    *out = std::make_unique<S3UFS>(authority);
+    return Status::OK();
+  }
+  if (scheme == "hdfs") {
+    *out = std::make_unique<HdfsUFS>(authority);
     return Status::OK();
   }
   if (scheme == "fake") {

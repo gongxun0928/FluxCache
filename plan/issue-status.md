@@ -122,8 +122,8 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P2-07 | S3 UFS 驱动 | P1 | P1-11 | created | | |
-| P3-01 | HDFS UFS 驱动 | P1 | P1-11 | created | | |
+| P2-07 | S3 UFS 驱动 | P1 | P1-11 | completed | | 2026-03-11 stub 实现，需 AWS SDK 启用真实功能 |
+| P3-01 | HDFS UFS 驱动 | P1 | P1-11 | completed | | 2026-03-11 stub 实现，需 libhdfs 启用真实功能 |
 
 ## Phase I：HA 与弹性
 
@@ -140,7 +140,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P1-13 | Metrics 基础导出 | P2 | P1-05A, P1-06 | completed | | 2026-03-11 实现并验证 |
 | P3-02 | PageStore 并发优化 | P1 | P1-10 | completed | | 2026-03-11 实现并验证 |
 | P3-03 | 批量 RPC 与顺序读 pipeline | P1 | P1-14D, P2-08 | completed | | 2026-03-11 实现并验证 |
-| P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | in_progress | | 设计+实现完成，待构建修复后验证 |
+| P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | completed | | 2026-03-11 实现并验证 |
 | P3-08 | 可观测性指标扩展 | P2 | P1-13, P2-02, P3-05 | completed | | 2026-03-11 实现并验证 |
 | P3-09 | 慢请求与热点页追踪 | P2 | P3-08 | completed | | 2026-03-11 实现并验证 |
 | P3-07 | 缺陷治理与回归测试轨道 | P2 | P1-15D | completed | | 2026-03-11 实现并验证 |

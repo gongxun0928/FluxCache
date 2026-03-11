@@ -162,9 +162,31 @@ TEST_F(LocalUFSTest, FactoryCreatesLocalUFS) {
   ASSERT_TRUE(st.ok());
 }
 
-TEST_F(LocalUFSTest, FactoryRejectsUnknownScheme) {
+TEST_F(LocalUFSTest, FactoryCreatesS3UfsStub) {
   std::unique_ptr<UFS> ufs;
   Status st = CreateUFS("s3", "bucket", &ufs);
+  ASSERT_TRUE(st.ok());
+  ASSERT_NE(ufs.get(), nullptr);
+  std::string out;
+  st = ufs->Read("key", 0, 10, &out);
+  EXPECT_FALSE(st.ok());
+  EXPECT_EQ(st.code(), StatusCode::kUnavailable);
+}
+
+TEST_F(LocalUFSTest, FactoryCreatesHdfsUfsStub) {
+  std::unique_ptr<UFS> ufs;
+  Status st = CreateUFS("hdfs", "namenode:9000", &ufs);
+  ASSERT_TRUE(st.ok());
+  ASSERT_NE(ufs.get(), nullptr);
+  std::string out;
+  st = ufs->Read("/path", 0, 10, &out);
+  EXPECT_FALSE(st.ok());
+  EXPECT_EQ(st.code(), StatusCode::kUnavailable);
+}
+
+TEST_F(LocalUFSTest, FactoryRejectsUnknownScheme) {
+  std::unique_ptr<UFS> ufs;
+  Status st = CreateUFS("unknown", "authority", &ufs);
   EXPECT_FALSE(st.ok());
   EXPECT_EQ(st.code(), StatusCode::kInvalidArgument);
 }
