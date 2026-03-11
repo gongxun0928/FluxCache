@@ -201,6 +201,43 @@ fluxcache:
   EXPECT_EQ(result.value().worker.eviction_policy, "lru");
 }
 
+TEST(ConfigTest, ClientResilienceOptionalFields) {
+  const char* yaml = R"(
+fluxcache:
+  master:
+    host: "127.0.0.1"
+    port: 9090
+  worker:
+    data_dir: "/tmp/fluxcache_worker"
+  client:
+    master_host: "127.0.0.1"
+    master_port: 9090
+    timeout_master_read_sec: 15
+    timeout_master_write_sec: 45
+    timeout_worker_read_sec: 12
+    timeout_worker_write_sec: 40
+    circuit_breaker_enabled: false
+    circuit_breaker_failure_threshold: 10
+    circuit_breaker_open_duration_ms: 60000
+  ufs:
+    type: "localfs"
+    path: "/tmp/fluxcache_ufs"
+)";
+  std::string path = WriteTempYaml(yaml);
+  auto result = LoadConfig(path);
+  std::remove(path.c_str());
+
+  ASSERT_TRUE(result.ok()) << result.status().message();
+  const auto& c = result.value().client;
+  EXPECT_EQ(c.timeout_master_read_sec, 15);
+  EXPECT_EQ(c.timeout_master_write_sec, 45);
+  EXPECT_EQ(c.timeout_worker_read_sec, 12);
+  EXPECT_EQ(c.timeout_worker_write_sec, 40);
+  EXPECT_FALSE(c.circuit_breaker_enabled);
+  EXPECT_EQ(c.circuit_breaker_failure_threshold, 10);
+  EXPECT_EQ(c.circuit_breaker_open_duration_ms, 60000);
+}
+
 TEST(ConfigTest, UfsTypeNotLocalfs) {
   const char* yaml = R"(
 fluxcache:

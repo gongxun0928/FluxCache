@@ -6,10 +6,15 @@
 #include "client/worker_client.h"
 #include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/circuit_breaker.h"
+#include "common/rpc/resilience_config.h"
 #include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include <memory>
+#include <mutex>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace fluxcache {
 
@@ -51,11 +56,20 @@ class FluxCacheClient {
   void SetRingForTest(const proto::GetHashRingResponse& resp);
 
  private:
+  CircuitBreaker* GetOrCreateWorkerCircuitBreaker(const std::string& address);
+
   std::string master_address_;
   size_t page_size_;
+  size_t prefetch_blocks_ = 0;
+  size_t batch_read_max_blocks_ = 8;
   RetryPolicy retry_policy_;
+  ResilienceConfig resilience_config_;
   ChannelPool pool_;
   std::unique_ptr<MasterClient> master_client_;
+  std::unique_ptr<CircuitBreaker> master_circuit_breaker_;
+  std::unordered_map<std::string, std::unique_ptr<CircuitBreaker>>
+      worker_circuit_breakers_;
+  std::mutex worker_cbs_mutex_;
   CachedHashRing cached_ring_;
   bool ring_fetched_ = false;
   std::unique_ptr<ClientPageCache> cache_;

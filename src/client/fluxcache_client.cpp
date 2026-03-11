@@ -3,8 +3,10 @@
 #include "master.pb.h"
 #include "worker.pb.h"
 #include <algorithm>
+#include <future>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace fluxcache {
 
@@ -12,13 +14,33 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
     : master_address_(config.master_host + ":" +
                       std::to_string(config.master_port)),
       page_size_(config.page_size > 0 ? config.page_size : 1024 * 1024),
+      prefetch_blocks_(config.prefetch_blocks),
+      batch_read_max_blocks_(config.batch_read_max_blocks > 0
+                                 ? config.batch_read_max_blocks
+                                 : 8),
       retry_policy_(RetryPolicyFromConfig(config)),
+      resilience_config_(ResilienceConfigFromClientConfig(config)),
       pool_(ChannelPoolOptions{config.channel_pool_size > 0
                                   ? config.channel_pool_size
                                   : 4}),
       ring_fetched_(false) {
+  CircuitBreaker* master_cb = nullptr;
+  if (config.circuit_breaker_enabled) {
+    CircuitBreaker::Options opts;
+    opts.failure_threshold = config.circuit_breaker_failure_threshold > 0
+                                 ? config.circuit_breaker_failure_threshold
+                                 : 5;
+    opts.open_duration_ms = config.circuit_breaker_open_duration_ms > 0
+                                ? config.circuit_breaker_open_duration_ms
+                                : 30000;
+    opts.half_open_probes = config.circuit_breaker_half_open_probes > 0
+                                ? config.circuit_breaker_half_open_probes
+                                : 1;
+    master_circuit_breaker_ = std::make_unique<CircuitBreaker>(opts);
+    master_cb = master_circuit_breaker_.get();
+  }
   master_client_ = std::make_unique<MasterClient>(
-      &pool_, master_address_, 10, retry_policy_);
+      &pool_, master_address_, resilience_config_, retry_policy_, master_cb);
   if (config.local_cache_enabled && config.local_cache_size_bytes > 0) {
     cache_ = std::make_unique<ClientPageCache>(config.local_cache_size_bytes);
   }
@@ -63,7 +85,26 @@ StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
     return Status::NotFound("worker not in ring");
   }
 
-  return std::make_unique<WorkerClient>(&pool_, addr, 10, retry_policy_);
+  CircuitBreaker* worker_cb = GetOrCreateWorkerCircuitBreaker(addr);
+  return std::make_unique<WorkerClient>(&pool_, addr, resilience_config_,
+                                        retry_policy_, worker_cb);
+}
+
+CircuitBreaker* FluxCacheClient::GetOrCreateWorkerCircuitBreaker(
+    const std::string& address) {
+  std::lock_guard<std::mutex> lock(worker_cbs_mutex_);
+  auto it = worker_circuit_breakers_.find(address);
+  if (it != worker_circuit_breakers_.end()) {
+    return it->second.get();
+  }
+  CircuitBreaker::Options opts;
+  opts.failure_threshold = 5;
+  opts.open_duration_ms = 30000;
+  opts.half_open_probes = 1;
+  auto cb = std::make_unique<CircuitBreaker>(opts);
+  CircuitBreaker* ptr = cb.get();
+  worker_circuit_breakers_[address] = std::move(cb);
+  return ptr;
 }
 
 void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {
@@ -119,7 +160,22 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
   uint32_t last_block_idx =
       static_cast<uint32_t>((end_offset - 1) / block_size);
 
-  std::string result;
+  // Per-block state: block_idx, block_id, block_start, overlap, page range,
+  // page_data, missing_pages.
+  struct BlockReadState {
+    uint32_t bi;
+    BlockId block_id;
+    uint64_t block_start;
+    uint64_t overlap_start;
+    uint64_t overlap_end;
+    uint32_t first_page;
+    uint32_t last_page;
+    std::unordered_map<uint32_t, std::string> page_data;
+    std::vector<uint32_t> missing_pages;
+  };
+  std::vector<BlockReadState> blocks;
+  blocks.reserve(last_block_idx - first_block_idx + 1);
+
   for (uint32_t bi = first_block_idx; bi <= last_block_idx; ++bi) {
     BlockId block_id = MakeBlockId(inode_id, bi);
     uint64_t block_start = static_cast<uint64_t>(bi) * block_size;
@@ -138,89 +194,170 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
     uint32_t last_page =
         static_cast<uint32_t>((block_local_end - 1) / page_size_);
 
-    std::unordered_map<uint32_t, std::string> page_data;
-    std::vector<uint32_t> missing_pages;
-
+    BlockReadState state{bi, block_id, block_start, overlap_start, overlap_end,
+                        first_page, last_page, {}, {}};
     for (uint32_t pi = first_page; pi <= last_page; ++pi) {
       PageId page_id = MakePageId(block_id, static_cast<uint16_t>(pi));
       if (cache_) {
         auto cached = cache_->Get(page_id, expected_mtime_ms);
         if (cached) {
-          page_data[pi] =
-              std::string(cached->begin(), cached->end());
+          state.page_data[pi] = std::string(cached->begin(), cached->end());
           continue;
         }
       }
-      missing_pages.push_back(pi);
+      state.missing_pages.push_back(pi);
     }
+    blocks.push_back(std::move(state));
+  }
 
-    if (!missing_pages.empty()) {
+  // Group consecutive blocks by worker, then batch or single RPC.
+  WorkerId prev_worker = 0;
+  std::vector<BlockReadState*> batch;
+  auto flush_batch = [&](WorkerId wid) -> Status {
+    if (batch.empty()) return Status::OK();
+    auto client_result = GetWorkerClient(wid);
+    if (!client_result.ok()) return client_result.status();
+    auto* wc = client_result.value().get();
+
+    if (batch.size() == 1) {
+      auto* st = batch[0];
       proto::ReadPagesRequest req;
-      req.set_block_id(block_id);
+      req.set_block_id(st->block_id);
       req.set_expected_mtime_ms(expected_mtime_ms);
       req.set_ufs_uri(ufs_uri);
       req.set_ufs_path(ufs_path);
-      for (uint32_t pi : missing_pages) {
-        req.add_page_indices(pi);
-      }
-
-      auto worker_result = GetWorkerForBlock(block_id);
-      if (!worker_result.ok()) {
-        return worker_result.status();
-      }
-      auto client_result = GetWorkerClient(worker_result.value());
-      if (!client_result.ok()) {
-        return client_result.status();
-      }
+      for (uint32_t pi : st->missing_pages) req.add_page_indices(pi);
 
       proto::ReadPagesResponse read_resp;
-      Status s = client_result.value()->ReadPages(req, &read_resp);
+      Status s = wc->ReadPages(req, &read_resp);
       if (!s.ok()) {
         Status refresh_s = RefreshRing();
         if (refresh_s.ok()) {
-          worker_result = GetWorkerForBlock(block_id);
-          if (worker_result.ok()) {
-            client_result = GetWorkerClient(worker_result.value());
-            if (client_result.ok()) {
-              s = client_result.value()->ReadPages(req, &read_resp);
-            }
+          auto wr = GetWorkerForBlock(st->block_id);
+          if (wr.ok()) {
+            auto cr = GetWorkerClient(wr.value());
+            if (cr.ok()) s = cr.value()->ReadPages(req, &read_resp);
           }
         }
-        if (!s.ok()) {
-          return s;
-        }
+        if (!s.ok()) return s;
       }
-
       const std::string& data = read_resp.data();
       size_t pos = 0;
-      for (uint32_t pi : missing_pages) {
+      for (uint32_t pi : st->missing_pages) {
         if (pos >= data.size()) break;
         size_t chunk_len = std::min(page_size_, data.size() - pos);
         std::string chunk = data.substr(pos, chunk_len);
-        page_data[pi] = chunk;
+        st->page_data[pi] = chunk;
         if (cache_) {
           std::vector<uint8_t> vec(chunk.begin(), chunk.end());
-          cache_->Put(MakePageId(block_id, static_cast<uint16_t>(pi)),
+          cache_->Put(MakePageId(st->block_id, static_cast<uint16_t>(pi)),
                      std::move(vec), expected_mtime_ms);
         }
         pos += chunk_len;
       }
-    }
-
-    std::string assembled;
-    for (uint32_t pi = first_page; pi <= last_page; ++pi) {
-      auto it = page_data.find(pi);
-      if (it != page_data.end()) {
-        assembled += it->second;
+    } else {
+      proto::BatchReadPagesRequest batch_req;
+      for (auto* st : batch) {
+        auto* r = batch_req.add_requests();
+        r->set_block_id(st->block_id);
+        r->set_expected_mtime_ms(expected_mtime_ms);
+        r->set_ufs_uri(ufs_uri);
+        r->set_ufs_path(ufs_path);
+        for (uint32_t pi : st->missing_pages) r->add_page_indices(pi);
+      }
+      proto::BatchReadPagesResponse batch_resp;
+      Status s = wc->BatchReadPages(batch_req, &batch_resp);
+      if (!s.ok()) {
+        Status refresh_s = RefreshRing();
+        if (refresh_s.ok()) {
+          auto wr = GetWorkerForBlock(batch[0]->block_id);
+          if (wr.ok()) {
+            auto cr = GetWorkerClient(wr.value());
+            if (cr.ok()) s = cr.value()->BatchReadPages(batch_req, &batch_resp);
+          }
+        }
+        if (!s.ok()) return s;
+      }
+      for (size_t i = 0; i < batch.size(); ++i) {
+        auto* st = batch[i];
+        const std::string& data =
+            i < static_cast<size_t>(batch_resp.block_data_size())
+                ? batch_resp.block_data(static_cast<int>(i))
+                : "";
+        size_t pos = 0;
+        for (uint32_t pi : st->missing_pages) {
+          if (pos >= data.size()) break;
+          size_t chunk_len = std::min(page_size_, data.size() - pos);
+          std::string chunk = data.substr(pos, chunk_len);
+          st->page_data[pi] = chunk;
+          if (cache_) {
+            std::vector<uint8_t> vec(chunk.begin(), chunk.end());
+            cache_->Put(MakePageId(st->block_id, static_cast<uint16_t>(pi)),
+                       std::move(vec), expected_mtime_ms);
+          }
+          pos += chunk_len;
+        }
       }
     }
-    size_t skip = block_local_start % page_size_;
-    size_t take = static_cast<size_t>(overlap_end - overlap_start);
+    batch.clear();
+    return Status::OK();
+  };
+
+  for (auto& st : blocks) {
+    auto worker_result = GetWorkerForBlock(st.block_id);
+    if (!worker_result.ok()) return worker_result.status();
+    WorkerId wid = worker_result.value();
+
+    if (!st.missing_pages.empty()) {
+      if (wid != prev_worker && prev_worker != 0) {
+        Status s = flush_batch(prev_worker);
+        if (!s.ok()) return s;
+      }
+      prev_worker = wid;
+      batch.push_back(&st);
+      if (batch.size() >= batch_read_max_blocks_) {
+        Status s = flush_batch(wid);
+        if (!s.ok()) return s;
+        prev_worker = 0;
+      }
+    }
+  }
+  if (prev_worker != 0) {
+    Status s = flush_batch(prev_worker);
+    if (!s.ok()) return s;
+  }
+
+  std::string result;
+  for (const auto& st : blocks) {
+    std::string assembled;
+    for (uint32_t pi = st.first_page; pi <= st.last_page; ++pi) {
+      auto it = st.page_data.find(pi);
+      if (it != st.page_data.end()) assembled += it->second;
+    }
+    size_t skip = (st.overlap_start - st.block_start) % page_size_;
+    size_t take = static_cast<size_t>(st.overlap_end - st.overlap_start);
     if (skip < assembled.size() && take > 0) {
       size_t available = assembled.size() - skip;
       result += assembled.substr(skip, std::min(take, available));
     }
   }
+
+  // Prefetch next blocks when sequential read.
+  if (prefetch_blocks_ > 0 && cache_ && last_block_idx + 1 < GetBlockCount(file_size, block_size)) {
+    uint32_t prefetch_start = last_block_idx + 1;
+    uint32_t prefetch_end = std::min(
+        prefetch_start + static_cast<uint32_t>(prefetch_blocks_),
+        GetBlockCount(file_size, block_size));
+    std::string path_copy = path;
+    std::async(std::launch::async, [this, path_copy, prefetch_start, prefetch_end,
+                                   block_size, file_size]() {
+      uint64_t off = static_cast<uint64_t>(prefetch_start) * block_size;
+      uint64_t len = static_cast<uint64_t>(prefetch_end - prefetch_start) * block_size;
+      if (off + len > file_size) len = file_size - off;
+      (void)Read(path_copy, off, len);
+    });
+  }
+
   return result;
 }
 

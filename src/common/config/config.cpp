@@ -192,6 +192,35 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
   OptionalInt(client["retry_max_attempts"], 3, &cfg.client.retry_max_attempts);
   OptionalInt(client["retry_initial_delay_ms"], 50,
                &cfg.client.retry_initial_delay_ms);
+  OptionalInt(client["timeout_master_read_sec"], 10,
+               &cfg.client.timeout_master_read_sec);
+  OptionalInt(client["timeout_master_write_sec"], 30,
+               &cfg.client.timeout_master_write_sec);
+  OptionalInt(client["timeout_worker_read_sec"], 10,
+               &cfg.client.timeout_worker_read_sec);
+  OptionalInt(client["timeout_worker_write_sec"], 30,
+               &cfg.client.timeout_worker_write_sec);
+  if (client["circuit_breaker_enabled"] && client["circuit_breaker_enabled"].IsDefined()) {
+    try {
+      cfg.client.circuit_breaker_enabled =
+          client["circuit_breaker_enabled"].as<bool>();
+    } catch (const YAML::BadConversion&) {}
+  }
+  OptionalInt(client["circuit_breaker_failure_threshold"], 5,
+               &cfg.client.circuit_breaker_failure_threshold);
+  if (client["circuit_breaker_error_rate_threshold"] &&
+      client["circuit_breaker_error_rate_threshold"].IsDefined()) {
+    try {
+      double v = client["circuit_breaker_error_rate_threshold"].as<double>();
+      if (v > 0 && v <= 1.0) {
+        cfg.client.circuit_breaker_error_rate_threshold = v;
+      }
+    } catch (const YAML::BadConversion&) {}
+  }
+  OptionalInt(client["circuit_breaker_open_duration_ms"], 30000,
+               &cfg.client.circuit_breaker_open_duration_ms);
+  OptionalInt(client["circuit_breaker_half_open_probes"], 1,
+               &cfg.client.circuit_breaker_half_open_probes);
 
   // ufs
   YAML::Node ufs = fluxcache["ufs"];

@@ -6,11 +6,14 @@
 namespace fluxcache {
 
 MasterClient::MasterClient(ChannelPool* pool, const std::string& master_address,
-                           int deadline_sec, const RetryPolicy& retry_policy)
+                           const ResilienceConfig& resilience_config,
+                           const RetryPolicy& retry_policy,
+                           CircuitBreaker* circuit_breaker)
     : pool_(pool),
       master_address_(master_address),
-      deadline_sec_(deadline_sec),
-      retry_policy_(retry_policy) {}
+      resilience_config_(resilience_config),
+      retry_policy_(retry_policy),
+      circuit_breaker_(circuit_breaker) {}
 
 namespace {
 
@@ -45,12 +48,21 @@ StatusOr<fluxcache::proto::GetHashRingResponse> DoGetHashRing(
 }  // namespace
 
 StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterRead);
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
-  return ExecuteWithRetry<proto::GetHashRingResponse>(
-      p, [this]() {
-        return DoGetHashRing(pool_, master_address_, deadline_sec_);
+  auto result = ExecuteWithRetry<proto::GetHashRingResponse>(
+      p, [this, deadline]() {
+        return DoGetHashRing(pool_, master_address_, deadline);
       });
+  if (circuit_breaker_) {
+    result.ok() ? circuit_breaker_->RecordSuccess()
+                : circuit_breaker_->RecordFailure();
+  }
+  return result;
 }
 
 namespace {
@@ -92,24 +104,39 @@ StatusOr<fluxcache::proto::GetFileInfoResponse> DoGetFileInfo(
 
 StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
     const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterRead);
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
-  return ExecuteWithRetry<proto::GetFileInfoResponse>(p, [this, path]() {
-    return DoGetFileInfo(pool_, master_address_, deadline_sec_, path);
-  });
+  auto result = ExecuteWithRetry<proto::GetFileInfoResponse>(
+      p, [this, path, deadline]() {
+        return DoGetFileInfo(pool_, master_address_, deadline, path);
+      });
+  if (circuit_breaker_) {
+    result.ok() ? circuit_breaker_->RecordSuccess()
+                : circuit_breaker_->RecordFailure();
+  }
+  return result;
 }
 
 StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
     const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::CreateFileRequest req;
   req.set_path(path);
@@ -118,9 +145,11 @@ StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
   auto grpc_status = stub.CreateFile(&ctx, req, &resp);
 
   if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
     return resp;
   }
 
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
   if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
       grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
     return Status::Unavailable(grpc_status.error_message().c_str());
@@ -136,15 +165,20 @@ StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
 
 Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
                                   std::optional<int64_t> ufs_mtime_ms) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::CompleteFileRequest req;
   req.set_inode_id(inode_id);
@@ -157,9 +191,11 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
   auto grpc_status = stub.CompleteFile(&ctx, req, &resp);
 
   if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
     return Status::OK();
   }
 
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
   if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
       grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
     return Status::Unavailable(grpc_status.error_message().c_str());
@@ -171,15 +207,20 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
 }
 
 Status MasterClient::DeleteFile(const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::DeleteFileRequest req;
   req.set_path(path);
@@ -188,9 +229,11 @@ Status MasterClient::DeleteFile(const std::string& path) {
   auto grpc_status = stub.DeleteFile(&ctx, req, &resp);
 
   if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
     return Status::OK();
   }
 
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
   if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
       grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
     return Status::Unavailable(grpc_status.error_message().c_str());
@@ -206,15 +249,20 @@ Status MasterClient::DeleteFile(const std::string& path) {
 
 Status MasterClient::Mount(const std::string& path,
                            const std::string& ufs_uri) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::MountRequest req;
   req.set_path(path);
@@ -223,21 +271,28 @@ Status MasterClient::Mount(const std::string& path,
 
   auto grpc_status = stub.Mount(&ctx, req, &resp);
   if (!grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::IOError(grpc_status.error_message().c_str());
   }
+  if (circuit_breaker_) circuit_breaker_->RecordSuccess();
   return Status::OK();
 }
 
 Status MasterClient::Unmount(const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::UnmountRequest req;
   req.set_path(path);
@@ -245,6 +300,7 @@ Status MasterClient::Unmount(const std::string& path) {
 
   auto grpc_status = stub.Unmount(&ctx, req, &resp);
   if (!grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
       return Status::NotFound(grpc_status.error_message().c_str());
     }
@@ -254,25 +310,32 @@ Status MasterClient::Unmount(const std::string& path) {
     }
     return Status::IOError(grpc_status.error_message().c_str());
   }
+  if (circuit_breaker_) circuit_breaker_->RecordSuccess();
   return Status::OK();
 }
 
 StatusOr<std::vector<std::string>> MasterClient::ListMounts() {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterRead);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::ListMountsRequest req;
   proto::ListMountsResponse resp;
 
   auto grpc_status = stub.ListMounts(&ctx, req, &resp);
   if (!grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
         grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
       return Status::Unavailable(grpc_status.error_message().c_str());
@@ -280,6 +343,7 @@ StatusOr<std::vector<std::string>> MasterClient::ListMounts() {
     return Status::IOError(grpc_status.error_message().c_str());
   }
 
+  if (circuit_breaker_) circuit_breaker_->RecordSuccess();
   std::vector<std::string> paths;
   paths.reserve(resp.paths_size());
   for (int i = 0; i < resp.paths_size(); ++i) {
@@ -290,15 +354,20 @@ StatusOr<std::vector<std::string>> MasterClient::ListMounts() {
 
 StatusOr<uint64_t> MasterClient::RegisterWorker(const std::string& host,
                                                 uint16_t port) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
   auto channel = pool_->GetChannel(master_address_);
   if (!channel) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::Unavailable("failed to get channel for master");
   }
 
   fluxcache::proto::MasterService::Stub stub(channel);
   grpc::ClientContext ctx;
   ctx.set_deadline(std::chrono::system_clock::now() +
-                   std::chrono::seconds(deadline_sec_));
+                   std::chrono::seconds(deadline));
 
   proto::RegisterWorkerRequest req;
   req.mutable_endpoint()->set_host(host);
@@ -307,8 +376,10 @@ StatusOr<uint64_t> MasterClient::RegisterWorker(const std::string& host,
 
   auto grpc_status = stub.RegisterWorker(&ctx, req, &resp);
   if (!grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordFailure();
     return Status::IOError(grpc_status.error_message().c_str());
   }
+  if (circuit_breaker_) circuit_breaker_->RecordSuccess();
   return resp.worker_id();
 }
 

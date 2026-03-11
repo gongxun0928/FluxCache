@@ -41,6 +41,28 @@ struct ClientConfig {
   bool local_cache_enabled = true;
   /// L1 cache capacity in bytes. 0 = disabled. Default 256MB.
   size_t local_cache_size_bytes = 256 * 1024 * 1024;
+  /// Timeout for Master read RPCs (GetFileInfo, GetHashRing). Default 10s.
+  int timeout_master_read_sec = 10;
+  /// Timeout for Master write RPCs (CreateFile, CompleteFile, etc). Default 30s.
+  int timeout_master_write_sec = 30;
+  /// Timeout for Worker ReadPages. Default 10s.
+  int timeout_worker_read_sec = 10;
+  /// Timeout for Worker WritePages. Default 30s.
+  int timeout_worker_write_sec = 30;
+  /// Enable circuit breaker. Default true.
+  bool circuit_breaker_enabled = true;
+  /// Circuit breaker failure threshold. Default 5.
+  int circuit_breaker_failure_threshold = 5;
+  /// Circuit breaker error rate threshold (0.0-1.0). Default 0.5.
+  double circuit_breaker_error_rate_threshold = 0.5;
+  /// Circuit breaker open duration in ms. Default 30000.
+  int circuit_breaker_open_duration_ms = 30000;
+  /// Circuit breaker half-open probe successes to recover. Default 1.
+  int circuit_breaker_half_open_probes = 1;
+  /// Prefetch next N blocks during sequential read. 0 = disabled. Default 2.
+  size_t prefetch_blocks = 2;
+  /// Max blocks per BatchReadPages RPC. Default 8.
+  size_t batch_read_max_blocks = 8;
 };
 
 struct UfsConfig {

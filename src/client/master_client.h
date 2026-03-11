@@ -2,6 +2,8 @@
 
 #include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/circuit_breaker.h"
+#include "common/rpc/resilience_config.h"
 #include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include "master.pb.h"
@@ -12,16 +14,18 @@
 
 namespace fluxcache {
 
-/// Master RPC wrapper. All RPCs set deadline.
+/// Master RPC wrapper. All RPCs set deadline per op type; optional circuit breaker.
 class MasterClient {
  public:
   /// @param pool Channel pool (must outlive this client).
   /// @param master_address "host:port".
-  /// @param deadline_sec RPC deadline in seconds (default 10).
+  /// @param resilience_config Timeouts per op type.
   /// @param retry_policy Retry policy for idempotent RPCs (default: 3 retries).
+  /// @param circuit_breaker Optional; if non-null and enabled, blocks when OPEN.
   MasterClient(ChannelPool* pool, const std::string& master_address,
-               int deadline_sec = 10,
-               const RetryPolicy& retry_policy = RetryPolicy{});
+               const ResilienceConfig& resilience_config,
+               const RetryPolicy& retry_policy = RetryPolicy{},
+               CircuitBreaker* circuit_breaker = nullptr);
 
   /// Get hash ring from Master. Returns Unavailable on DEADLINE_EXCEEDED or
   /// UNAVAILABLE.
@@ -57,8 +61,9 @@ class MasterClient {
  private:
   ChannelPool* pool_;
   std::string master_address_;
-  int deadline_sec_;
+  ResilienceConfig resilience_config_;
   RetryPolicy retry_policy_;
+  CircuitBreaker* circuit_breaker_;
 };
 
 }  // namespace fluxcache
