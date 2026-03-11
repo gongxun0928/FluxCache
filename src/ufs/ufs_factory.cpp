@@ -26,7 +26,7 @@ Status CreateUFS(const std::string& scheme, const std::string& authority,
                  std::unique_ptr<UFS>* out) {
   if (!out) return Status::InvalidArgument(nullptr);
 
-  if (scheme == "local" || scheme == "file") {
+  if (scheme == "local" || scheme == "file" || scheme == "localfs") {
     *out = std::make_unique<LocalUFS>(authority);
     return Status::OK();
   }

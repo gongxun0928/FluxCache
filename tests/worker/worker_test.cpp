@@ -1,5 +1,7 @@
 #include "worker/worker_service_impl.h"
 #include "worker/worker_server.h"
+#include "worker/page/page_store.h"
+#include "worker/storage/memory_tier.h"
 #include "common/config/config.h"
 #include "worker.pb.h"
 #include <grpcpp/grpcpp.h>
@@ -12,8 +14,15 @@
 
 namespace fluxcache {
 
-TEST(WorkerServiceTest, ReadPagesReturnsUnimplemented) {
-  WorkerServiceImpl impl;
+namespace {
+constexpr size_t kPageSize = 1024 * 1024;
+constexpr size_t kBlockSize = 64ULL * 1024 * 1024;
+}  // namespace
+
+TEST(WorkerServiceTest, ReadPagesWithEmptyRequestReturnsError) {
+  MemoryTier tier(256 * kPageSize);
+  PageStore store(&tier, kPageSize);
+  WorkerServiceImpl impl(&store, kPageSize, kBlockSize);
   ::grpc::ServerContext ctx;
   proto::ReadPagesRequest req;
   proto::ReadPagesResponse resp;
@@ -21,13 +30,13 @@ TEST(WorkerServiceTest, ReadPagesReturnsUnimplemented) {
   auto status = impl.ReadPages(&ctx, &req, &resp);
 
   ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.error_code(), ::grpc::StatusCode::UNIMPLEMENTED);
-  EXPECT_NE(std::string(status.error_message()).find("ReadPages"),
-            std::string::npos);
+  EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 TEST(WorkerServiceTest, WritePagesReturnsUnimplemented) {
-  WorkerServiceImpl impl;
+  MemoryTier tier(256 * kPageSize);
+  PageStore store(&tier, kPageSize);
+  WorkerServiceImpl impl(&store, kPageSize, kBlockSize);
   ::grpc::ServerContext ctx;
   proto::WritePagesRequest req;
   proto::WritePagesResponse resp;
@@ -41,7 +50,9 @@ TEST(WorkerServiceTest, WritePagesReturnsUnimplemented) {
 }
 
 TEST(WorkerServiceTest, HeartbeatReturnsOk) {
-  WorkerServiceImpl impl;
+  MemoryTier tier(256 * kPageSize);
+  PageStore store(&tier, kPageSize);
+  WorkerServiceImpl impl(&store, kPageSize, kBlockSize);
   ::grpc::ServerContext ctx;
   proto::HeartbeatRequest req;
   req.set_worker_id(1);

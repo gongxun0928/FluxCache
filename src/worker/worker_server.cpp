@@ -5,7 +5,10 @@
 namespace fluxcache {
 
 WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
-  service_impl_ = std::make_unique<WorkerServiceImpl>();
+  memory_tier_ = std::make_unique<MemoryTier>(256 * kPageSize);  // 256MB
+  page_store_ = std::make_unique<PageStore>(memory_tier_.get(), kPageSize);
+  service_impl_ = std::make_unique<WorkerServiceImpl>(
+      page_store_.get(), kPageSize, kBlockSize);
 }
 
 WorkerServer::~WorkerServer() {

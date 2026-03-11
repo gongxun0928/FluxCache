@@ -1,5 +1,6 @@
 #include "ufs/fake_ufs.h"
 
+#include <algorithm>
 #include <mutex>
 #include <unordered_map>
 
@@ -15,19 +16,36 @@ void FakeUfs::AddFile(const std::string& path, uint64_t size, int64_t mtime_ms) 
   files_[path] = std::move(fs);
 }
 
+void FakeUfs::AddFileWithContent(const std::string& path,
+                                 const std::string& content, int64_t mtime_ms) {
+  AddFile(path, static_cast<uint64_t>(content.size()), mtime_ms);
+  content_[path] = content;
+}
+
 std::unique_ptr<UFS> FakeUfs::Clone() const {
   auto clone = std::make_unique<FakeUfs>();
   clone->files_ = files_;
+  clone->content_ = content_;
+  clone->read_count_ = read_count_;
   return clone;
 }
 
 Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
                      std::string* out) {
-  (void)path;
-  (void)offset;
-  (void)size;
-  (void)out;
-  return Status::InvalidArgument("FakeUfs::Read not implemented");
+  if (!out) return Status::InvalidArgument(nullptr);
+  auto it = content_.find(path);
+  if (it == content_.end()) {
+    return Status::NotFound("FakeUfs: no content for path");
+  }
+  const std::string& data = it->second;
+  if (read_count_) read_count_->fetch_add(1);
+  if (offset >= data.size()) {
+    out->clear();
+    return Status::OK();
+  }
+  size_t to_read = std::min(size, data.size() - offset);
+  out->assign(data.data() + offset, to_read);
+  return Status::OK();
 }
 
 Status FakeUfs::Write(const std::string& path, uint64_t offset,

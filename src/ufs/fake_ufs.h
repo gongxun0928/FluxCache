@@ -2,6 +2,7 @@
 
 #include "ufs/ufs.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <map>
@@ -12,10 +13,18 @@ namespace fluxcache {
 
 // Test-only UFS stub with configurable mtime/size for GetFileInfo verification.
 // Register via ufs_factory.h RegisterFakeUfsForTest, then use "fake://<authority>" as ufs_uri.
+// AddFileWithContent + read_count support ReadPages cache hit/miss verification.
 class FakeUfs : public UFS {
  public:
   // Add a file at path with given size and mtime_ms. Path is relative (e.g. "file.txt").
   void AddFile(const std::string& path, uint64_t size, int64_t mtime_ms);
+
+  // Add a file with content for Read() to return. Size = content.size().
+  void AddFileWithContent(const std::string& path, const std::string& content,
+                          int64_t mtime_ms);
+
+  // Number of Read() calls. Shared across clones for cache hit/miss verification.
+  int64_t read_count() const { return read_count_ ? read_count_->load() : 0; }
 
   std::unique_ptr<UFS> Clone() const override;
 
@@ -32,6 +41,9 @@ class FakeUfs : public UFS {
 
  private:
   std::map<std::string, FileStatus> files_;
+  std::map<std::string, std::string> content_;
+  std::shared_ptr<std::atomic<int64_t>> read_count_{
+      std::make_shared<std::atomic<int64_t>>(0)};
 };
 
 }  // namespace fluxcache

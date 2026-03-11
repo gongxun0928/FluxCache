@@ -2,15 +2,18 @@
 
 #include "worker.grpc.pb.h"
 #include <atomic>
+#include <cstddef>
 #include <mutex>
 
 namespace fluxcache {
 
-// Minimal implementation of WorkerService for P1-06 skeleton.
-// ReadPages/WritePages return UNIMPLEMENTED; Heartbeat returns empty response.
+class PageStore;
+
+// WorkerService implementation. ReadPages uses PageStore + UFS; WritePages
+// returns UNIMPLEMENTED; Heartbeat returns empty response.
 class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
-  WorkerServiceImpl() = default;
+  WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size);
 
   ::grpc::Status ReadPages(::grpc::ServerContext* context,
                            const ::fluxcache::proto::ReadPagesRequest* request,
@@ -23,6 +26,11 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
   ::grpc::Status Heartbeat(::grpc::ServerContext* context,
                             const ::fluxcache::proto::HeartbeatRequest* request,
                             ::fluxcache::proto::HeartbeatResponse* response) override;
+
+ private:
+  PageStore* page_store_;
+  size_t page_size_;
+  size_t block_size_;
 };
 
 }  // namespace fluxcache
