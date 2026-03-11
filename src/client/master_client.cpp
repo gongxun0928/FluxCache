@@ -170,6 +170,40 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
   return Status::IOError(grpc_status.error_message().c_str());
 }
 
+Status MasterClient::DeleteFile(const std::string& path) {
+  auto channel = pool_->GetChannel(master_address_);
+  if (!channel) {
+    return Status::Unavailable("failed to get channel for master");
+  }
+
+  fluxcache::proto::MasterService::Stub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() +
+                   std::chrono::seconds(deadline_sec_));
+
+  proto::DeleteFileRequest req;
+  req.set_path(path);
+  proto::DeleteFileResponse resp;
+
+  auto grpc_status = stub.DeleteFile(&ctx, req, &resp);
+
+  if (grpc_status.ok()) {
+    return Status::OK();
+  }
+
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::UNIMPLEMENTED) {
+    return Status::Unavailable("DeleteFile not implemented on server");
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
 Status MasterClient::Mount(const std::string& path,
                            const std::string& ufs_uri) {
   auto channel = pool_->GetChannel(master_address_);

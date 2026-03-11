@@ -39,6 +39,10 @@ class FluxCacheClient {
   Status Write(const std::string& path, uint64_t offset,
                std::string_view data);
 
+  /// Delete file at path. Returns NotFound if path not found.
+  /// May return Unavailable if server DeleteFile not yet implemented.
+  Status Delete(const std::string& path);
+
   MasterClient* GetMasterClient() { return master_client_.get(); }
   CachedHashRing* GetCachedHashRing() { return &cached_ring_; }
 

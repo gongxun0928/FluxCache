@@ -340,4 +340,8 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
       last_mtime_ms != 0 ? std::optional<int64_t>(last_mtime_ms) : std::nullopt);
 }
 
+Status FluxCacheClient::Delete(const std::string& path) {
+  return master_client_->DeleteFile(path);
+}
+
 }  // namespace fluxcache

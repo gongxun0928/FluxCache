@@ -18,3 +18,11 @@ target_link_libraries(write_test PRIVATE fluxcache_client fluxcache_common
                                      fluxcache_worker fluxcache_ufs
                                      GTest::gtest_main)
 add_test(NAME write_test COMMAND write_test)
+
+add_executable(sdk_test sdk_test.cpp)
+target_include_directories(sdk_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(sdk_test PRIVATE fluxcache_sdk fluxcache_client
+                                     fluxcache_common fluxcache_proto
+                                     fluxcache_master fluxcache_worker
+                                     fluxcache_ufs GTest::gtest_main)
+add_test(NAME sdk_test COMMAND sdk_test)

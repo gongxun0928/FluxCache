@@ -38,6 +38,10 @@ class MasterClient {
   Status CompleteFile(uint64_t inode_id, uint64_t size,
                      std::optional<int64_t> ufs_mtime_ms = std::nullopt);
 
+  /// Delete file at path. Returns NotFound if path not found.
+  /// Server may return Unavailable/IOError if DeleteFile not yet implemented.
+  Status DeleteFile(const std::string& path);
+
   /// Mount UFS at path. For test/setup.
   Status Mount(const std::string& path, const std::string& ufs_uri);
 
