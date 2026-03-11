@@ -26,6 +26,10 @@ class FakeUfs : public UFS {
   // Number of Read() calls. Shared across clones for cache hit/miss verification.
   int64_t read_count() const { return read_count_ ? read_count_->load() : 0; }
 
+  // Test-only: when true, Write() returns error. Used for atomic boundary verification.
+  void SetWriteFail(bool fail) { write_fail_ = fail; }
+  bool write_fail() const { return write_fail_; }
+
   std::unique_ptr<UFS> Clone() const override;
 
   Status Read(const std::string& path, uint64_t offset, uint64_t size,
@@ -40,10 +44,13 @@ class FakeUfs : public UFS {
   Status Mkdirs(const std::string& path) override;
 
  private:
-  std::map<std::string, FileStatus> files_;
-  std::map<std::string, std::string> content_;
+  using FilesMap = std::map<std::string, FileStatus>;
+  using ContentMap = std::map<std::string, std::string>;
+  std::shared_ptr<FilesMap> files_{std::make_shared<FilesMap>()};
+  std::shared_ptr<ContentMap> content_{std::make_shared<ContentMap>()};
   std::shared_ptr<std::atomic<int64_t>> read_count_{
       std::make_shared<std::atomic<int64_t>>(0)};
+  bool write_fail_{false};
 };
 
 }  // namespace fluxcache

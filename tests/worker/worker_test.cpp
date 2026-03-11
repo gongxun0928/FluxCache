@@ -33,7 +33,7 @@ TEST(WorkerServiceTest, ReadPagesWithEmptyRequestReturnsError) {
   EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
 }
 
-TEST(WorkerServiceTest, WritePagesReturnsUnimplemented) {
+TEST(WorkerServiceTest, WritePagesWithEmptyRequestReturnsError) {
   MemoryTier tier(256 * kPageSize);
   PageStore store(&tier, kPageSize);
   WorkerServiceImpl impl(&store, kPageSize, kBlockSize);
@@ -44,9 +44,7 @@ TEST(WorkerServiceTest, WritePagesReturnsUnimplemented) {
   auto status = impl.WritePages(&ctx, &req, &resp);
 
   ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.error_code(), ::grpc::StatusCode::UNIMPLEMENTED);
-  EXPECT_NE(std::string(status.error_message()).find("WritePages"),
-            std::string::npos);
+  EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INVALID_ARGUMENT);
 }
 
 TEST(WorkerServiceTest, HeartbeatReturnsOk) {

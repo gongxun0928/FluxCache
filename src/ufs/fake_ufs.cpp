@@ -13,13 +13,13 @@ void FakeUfs::AddFile(const std::string& path, uint64_t size, int64_t mtime_ms) 
   fs.size = size;
   fs.mtime_ms = mtime_ms;
   fs.path = path;
-  files_[path] = std::move(fs);
+  (*files_)[path] = std::move(fs);
 }
 
 void FakeUfs::AddFileWithContent(const std::string& path,
                                  const std::string& content, int64_t mtime_ms) {
   AddFile(path, static_cast<uint64_t>(content.size()), mtime_ms);
-  content_[path] = content;
+  (*content_)[path] = content;
 }
 
 std::unique_ptr<UFS> FakeUfs::Clone() const {
@@ -27,14 +27,15 @@ std::unique_ptr<UFS> FakeUfs::Clone() const {
   clone->files_ = files_;
   clone->content_ = content_;
   clone->read_count_ = read_count_;
+  clone->write_fail_ = write_fail_;
   return clone;
 }
 
 Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
                      std::string* out) {
   if (!out) return Status::InvalidArgument(nullptr);
-  auto it = content_.find(path);
-  if (it == content_.end()) {
+  auto it = content_->find(path);
+  if (it == content_->end()) {
     return Status::NotFound("FakeUfs: no content for path");
   }
   const std::string& data = it->second;
@@ -50,10 +51,29 @@ Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
 
 Status FakeUfs::Write(const std::string& path, uint64_t offset,
                      std::string_view data) {
-  (void)path;
-  (void)offset;
-  (void)data;
-  return Status::InvalidArgument("FakeUfs::Write not implemented");
+  if (write_fail_) {
+    return Status::IOError("FakeUfs: Write failed (injected)");
+  }
+  if (data.empty()) return Status::OK();
+
+  // Ensure file exists in files_ (CreateFile flow may add file without content).
+  auto fit = files_->find(path);
+  if (fit == files_->end()) {
+    AddFile(path, 0, 0);
+    fit = files_->find(path);
+  }
+
+  std::string& content = (*content_)[path];
+  size_t required = offset + data.size();
+  if (content.size() < required) {
+    content.resize(required, '\0');
+  }
+  content.replace(offset, data.size(), data);
+
+  (*files_)[path].size = static_cast<uint64_t>(content.size());
+  (*files_)[path].mtime_ms =
+      ((*files_)[path].mtime_ms > 0 ? (*files_)[path].mtime_ms : 1) + 1;
+  return Status::OK();
 }
 
 Status FakeUfs::GetStatus(const std::string& path, FileStatus* status) {
@@ -65,8 +85,8 @@ Status FakeUfs::GetStatus(const std::string& path, FileStatus* status) {
     status->is_directory = true;
     return Status::OK();
   }
-  auto it = files_.find(path);
-  if (it != files_.end()) {
+  auto it = files_->find(path);
+  if (it != files_->end()) {
     *status = it->second;
     return Status::OK();
   }
@@ -78,7 +98,7 @@ Status FakeUfs::List(const std::string& path,
   if (!entries) return Status::InvalidArgument(nullptr);
   entries->clear();
   std::string prefix = path.empty() || path == "/" ? "" : path + "/";
-  for (const auto& [p, fs] : files_) {
+  for (const auto& [p, fs] : *files_) {
     if (prefix.empty()) {
       if (p.find('/') == std::string::npos) {
         entries->push_back(fs);

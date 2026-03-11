@@ -18,3 +18,9 @@ target_include_directories(read_pages_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(read_pages_test PRIVATE fluxcache_worker fluxcache_ufs
                                                fluxcache_proto GTest::gtest_main)
 add_test(NAME read_pages_test COMMAND read_pages_test)
+
+add_executable(write_pages_test write_pages_test.cpp)
+target_include_directories(write_pages_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(write_pages_test PRIVATE fluxcache_worker fluxcache_ufs
+                                                fluxcache_proto GTest::gtest_main)
+add_test(NAME write_pages_test COMMAND write_pages_test)
