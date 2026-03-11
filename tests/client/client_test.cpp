@@ -4,6 +4,7 @@
 #include "client/worker_client.h"
 #include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
+#include "common/rpc/resilience_config.h"
 #include "master.grpc.pb.h"
 #include "master.pb.h"
 #include "worker.grpc.pb.h"
@@ -32,7 +33,7 @@ TEST(ClientTest, ChannelPoolCreatesMasterAndWorkerStub) {
 
 TEST(ClientTest, MasterClientCreatesStubViaChannelPool) {
   ChannelPool pool;
-  MasterClient client(&pool, "127.0.0.1:1", 2);
+  MasterClient client(&pool, "127.0.0.1:1", ResilienceConfig{});
   auto result = client.GetHashRing();
   // No server on port 1: expect Unavailable. If a server exists, ok() is acceptable.
   if (!result.ok()) {
@@ -43,7 +44,7 @@ TEST(ClientTest, MasterClientCreatesStubViaChannelPool) {
 
 TEST(ClientTest, WorkerClientCreatesStubViaChannelPool) {
   ChannelPool pool;
-  WorkerClient client(&pool, "127.0.0.1:9091", 5);
+  WorkerClient client(&pool, "127.0.0.1:9091", ResilienceConfig{});
   proto::ReadPagesRequest req;
   req.set_block_id(1);
   proto::ReadPagesResponse resp;
