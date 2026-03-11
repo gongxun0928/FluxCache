@@ -125,16 +125,28 @@ Under File System (LocalFS first)
 后续阶段的可选依赖：
 
 - FUSE3
-- AWS SDK 或其他 S3 客户端栈
+- **S3/MinIO**：vcpkg + minio-cpp（`FLUXCACHE_ENABLE_S3=ON` 时）
 - HDFS 客户端库
 - Prometheus C++ client
 
 ### 构建
 
+**默认（不含 S3）：**
+
 ```bash
 mkdir -p build
 cd build
 cmake ..
+cmake --build .
+```
+
+**启用 S3/MinIO UFS（vcpkg + minio-cpp）：**
+
+```bash
+# 安装 vcpkg 后：
+mkdir -p build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[vcpkg路径]/scripts/buildsystems/vcpkg.cmake -DFLUXCACHE_ENABLE_S3=ON
 cmake --build .
 ```
 

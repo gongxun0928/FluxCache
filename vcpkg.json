@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "fluxcache",
+  "version": "0.1.0",
+  "description": "FluxCache distributed cache file system",
+  "license": "MIT",
+  "supports": "!uwp",
+  "dependencies": [],
+  "features": {
+    "s3": {
+      "description": "S3/MinIO UFS backend (minio-cpp)",
+      "dependencies": ["minio-cpp"]
+    }
+  }
+}

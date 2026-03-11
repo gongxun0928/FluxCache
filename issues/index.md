@@ -133,7 +133,9 @@ flowchart TD
 
 | Issue | 标题 | 依赖 | 分级 |
 |---|---|---|---|
-| [P2-07](./P2-07-s3-ufs-driver.md) | S3 UFS 驱动 | P1-11 | P1 |
+| [P2-07](./P2-07-s3-ufs-driver.md) | S3 UFS 驱动（父 issue，已拆为 P2-07A/B） | P1-11 | P1 |
+| [P2-07A](./P2-07a-vcpkg-minio-cpp.md) | vcpkg 依赖管理与 minio-cpp 集成 | P1-01, P2-07 | P1 |
+| [P2-07B](./P2-07b-s3-ufs-minio-cpp.md) | S3UFS 真实实现（基于 minio-cpp） | P2-07A, P1-11 | P1 |
 | [P3-01](./P3-01-hdfs-ufs-driver.md) | HDFS UFS 驱动 | P1-11 | P1 |
 
 ## Phase I：HA 与弹性

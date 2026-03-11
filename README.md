@@ -125,16 +125,28 @@ These are still roadmap items, not current stable core claims:
 Optional later-stage dependencies:
 
 - FUSE3
-- AWS SDK / S3 client stack
+- **S3/MinIO**: vcpkg + minio-cpp (when `FLUXCACHE_ENABLE_S3=ON`)
 - HDFS client libraries
 - Prometheus C++ client
 
 ### Build
 
+**Default (no S3):**
+
 ```bash
 mkdir -p build
 cd build
 cmake ..
+cmake --build .
+```
+
+**With S3/MinIO UFS (vcpkg + minio-cpp):**
+
+```bash
+# Install vcpkg, then:
+mkdir -p build
+cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[path-to-vcpkg]/scripts/buildsystems/vcpkg.cmake -DFLUXCACHE_ENABLE_S3=ON
 cmake --build .
 ```
 
