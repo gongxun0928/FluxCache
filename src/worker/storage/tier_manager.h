@@ -27,6 +27,18 @@ class TierManager : public StorageTier {
   size_t UsedCapacity() const override;
   size_t CapacityLimit() const override;
 
+  TierType GetTierType() const override {
+    return TierType::kMemory;  // Composite; per-handle via GetBlockTierInfo.
+  }
+
+  bool GetBlockTierInfo(uint64_t handle_id, TierType* out_type,
+                        uint64_t* out_tier_block_id) const override;
+
+  // Registers an existing tier block for recovery. Returns invalid handle on
+  // failure (tier not found or block missing).
+  TierBlockHandle RegisterRecoveredBlock(TierType tier_type,
+                                        uint64_t tier_block_id);
+
  private:
   struct HandleMapping {
     StorageTier* tier{nullptr};

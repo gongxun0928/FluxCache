@@ -22,6 +22,8 @@ class MemoryTier : public StorageTier {
   size_t UsedCapacity() const override { return used_; }
   size_t CapacityLimit() const override { return capacity_limit_; }
 
+  TierType GetTierType() const override { return TierType::kMemory; }
+
  private:
   size_t capacity_limit_;
   size_t used_{0};

@@ -13,7 +13,9 @@ class FileTier : public StorageTier {
  public:
   // root_path: directory for block files. Created if not exists.
   // capacity_limit: max total bytes across all blocks.
-  FileTier(std::string root_path, size_t capacity_limit);
+  // tier_type: kSSD or kHDD for MetaStore recovery.
+  FileTier(std::string root_path, size_t capacity_limit,
+           TierType tier_type = TierType::kSSD);
 
   Status Allocate(size_t size, TierBlockHandle* handle) override;
   Status Write(const TierBlockHandle& handle, size_t offset,
@@ -27,6 +29,10 @@ class FileTier : public StorageTier {
 
   const std::string& RootPath() const { return root_path_; }
 
+  TierType GetTierType() const override { return tier_type_; }
+
+  bool BlockExists(uint64_t block_id) const override;
+
  private:
   std::string BlockPath(uint64_t id) const;
   Status EnsureRootExists();
@@ -34,6 +40,7 @@ class FileTier : public StorageTier {
 
   std::string root_path_;
   size_t capacity_limit_;
+  TierType tier_type_;
   size_t used_{0};
   uint64_t next_id_{1};
   std::unordered_map<uint64_t, size_t> block_sizes_;

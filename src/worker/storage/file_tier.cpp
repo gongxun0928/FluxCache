@@ -10,13 +10,20 @@ namespace fluxcache {
 
 namespace fs = std::filesystem;
 
-FileTier::FileTier(std::string root_path, size_t capacity_limit)
-    : root_path_(std::move(root_path)), capacity_limit_(capacity_limit) {
+FileTier::FileTier(std::string root_path, size_t capacity_limit,
+                   TierType tier_type)
+    : root_path_(std::move(root_path)),
+      capacity_limit_(capacity_limit),
+      tier_type_(tier_type) {
   if (!root_path_.empty() && root_path_.back() != '/') {
     root_path_ += '/';
   }
   EnsureRootExists();
   RecoverFromDisk();
+}
+
+bool FileTier::BlockExists(uint64_t block_id) const {
+  return block_sizes_.find(block_id) != block_sizes_.end();
 }
 
 std::string FileTier::BlockPath(uint64_t id) const {

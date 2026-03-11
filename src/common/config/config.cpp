@@ -163,6 +163,7 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
       !s.ok()) {
     return s;
   }
+  OptionalString(worker["metastore_path"], "", &cfg.worker.metastore_path);
   OptionalString(worker["host"], "0.0.0.0", &cfg.worker.host);
   OptionalUint16(worker["port"], 0, &cfg.worker.port);
   OptionalUint32(worker["heartbeat_interval_ms"], 5000,

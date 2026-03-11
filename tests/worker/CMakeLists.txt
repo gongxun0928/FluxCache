@@ -45,3 +45,9 @@ target_include_directories(lru_policy_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(lru_policy_test PRIVATE fluxcache_worker fluxcache_proto
                                                GTest::gtest_main)
 add_test(NAME lru_policy_test COMMAND lru_policy_test)
+
+add_executable(meta_store_test meta_store_test.cpp)
+target_include_directories(meta_store_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(meta_store_test PRIVATE fluxcache_worker fluxcache_proto
+                                               GTest::gtest_main)
+add_test(NAME meta_store_test COMMAND meta_store_test)

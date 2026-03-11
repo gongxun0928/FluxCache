@@ -92,7 +92,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
 | P2-01 | SSD / HDD Tier 扩展 | P1 | P1-09 | created | | |
-| P2-05 | MetaStore RocksDB 集成与恢复 | P1 | P2-01, P1-10 | created | | |
+| P2-05 | MetaStore RocksDB 集成与恢复 | P1 | P2-01, P1-10 | completed | | 2026-03-11 实现并验证 |
 | P2-05B | Worker GC 与 orphan / misplaced block 对账 | P1 | P2-05, P1-05C, P1-15D | created | | |
 
 ## Phase E：多 Worker 与传输增强

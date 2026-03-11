@@ -2,7 +2,7 @@
 
 #include "common/config/config.h"
 #include "worker/page/page_store.h"
-#include "worker/storage/memory_tier.h"
+#include "worker/storage/tier_manager.h"
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
@@ -27,9 +27,11 @@ class WorkerServer {
  private:
   static constexpr size_t kPageSize = 1024 * 1024;    // 1MB
   static constexpr size_t kBlockSize = 64ULL * 1024 * 1024;  // 64MB
+  static constexpr size_t kSsdCapacity = 1024ULL * 1024 * 1024;  // 1GB
 
   WorkerConfig config_;
-  std::unique_ptr<MemoryTier> memory_tier_;
+  std::unique_ptr<TierManager> tier_manager_;
+  std::unique_ptr<class MetaStore> meta_store_;
   std::unique_ptr<PageStore> page_store_;
   std::unique_ptr<MetricsRegistry> metrics_registry_;
   std::unique_ptr<WorkerServiceImpl> service_impl_;

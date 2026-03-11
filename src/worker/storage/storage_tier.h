@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/status.h"
+#include "common/types.h"
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -38,6 +39,21 @@ class StorageTier {
 
   virtual size_t UsedCapacity() const = 0;
   virtual size_t CapacityLimit() const = 0;
+
+  // For MetaStore recovery: tier type and block id within this tier.
+  virtual TierType GetTierType() const = 0;
+
+  // For MetaStore: get (tier_type, tier_block_id) for a handle. Returns false
+  // if handle unknown. Default: single-tier returns (GetTierType(), handle_id).
+  virtual bool GetBlockTierInfo(uint64_t handle_id, TierType* out_type,
+                                uint64_t* out_tier_block_id) const {
+    *out_type = GetTierType();
+    *out_tier_block_id = handle_id;
+    return true;
+  }
+
+  // For recovery: returns true if block exists. MemoryTier returns false.
+  virtual bool BlockExists(uint64_t block_id) const { return false; }
 };
 
 }  // namespace fluxcache

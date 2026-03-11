@@ -2,13 +2,35 @@
 #include "worker/worker_service_impl.h"
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
+#include "worker/meta/meta_store.h"
+#include "worker/storage/memory_tier.h"
+#include "worker/storage/ssd_tier.h"
 #include <grpcpp/grpcpp.h>
 
 namespace fluxcache {
 
 WorkerServer::WorkerServer(const WorkerConfig& config) : config_(config) {
-  memory_tier_ = std::make_unique<MemoryTier>(256 * kPageSize);  // 256MB
-  page_store_ = std::make_unique<PageStore>(memory_tier_.get(), kPageSize);
+  tier_manager_ = std::make_unique<TierManager>();
+  tier_manager_->AddTier(std::make_unique<MemoryTier>(256 * kPageSize));  // 256MB
+
+  MetaStore* meta_ptr = nullptr;
+  if (!config_.data_dir.empty()) {
+    tier_manager_->AddTier(std::make_unique<SsdTier>(
+        config_.data_dir + "/ssd", kSsdCapacity));
+    meta_store_ = std::make_unique<MetaStore>();
+    std::string metastore_path = config_.metastore_path.empty()
+                                     ? config_.data_dir + "/metastore"
+                                     : config_.metastore_path;
+    if (meta_store_->Open(metastore_path)) {
+      meta_ptr = meta_store_.get();
+    }
+  }
+
+  page_store_ = std::make_unique<PageStore>(tier_manager_.get(), kPageSize,
+                                           meta_ptr);
+  if (meta_ptr) {
+    page_store_->RecoverFromMetaStore();
+  }
   if (config_.metrics_port > 0) {
     metrics_registry_ = std::make_unique<MetricsRegistry>();
     service_impl_ = std::make_unique<WorkerServiceImpl>(

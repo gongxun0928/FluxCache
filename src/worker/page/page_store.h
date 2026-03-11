@@ -12,11 +12,16 @@
 
 namespace fluxcache {
 
+class MetaStore;
+
 // Page-level cache engine. Maintains PageId -> TierBlockHandle index and
 // BlockId -> page_index set secondary index. Validates mtime on GetPage.
+// Optionally syncs with MetaStore for recovery.
 class PageStore {
  public:
-  explicit PageStore(StorageTier* tier, size_t page_size = 1024 * 1024);
+  // tier: storage backend. meta_store: optional, for persistence.
+  explicit PageStore(StorageTier* tier, size_t page_size = 1024 * 1024,
+                    MetaStore* meta_store = nullptr);
 
   // GetPage: returns data if hit and expected_mtime matches; on mismatch
   // deletes the stale page and returns NotFound.
@@ -30,6 +35,10 @@ class PageStore {
   Status DeleteBlockPages(BlockId block_id);
   bool Contains(PageId id) const;
 
+  // Recovers page_index_ from MetaStore. Requires tier to be TierManager and
+  // meta_store set. Cleans orphan MetaStore entries when tier file missing.
+  void RecoverFromMetaStore();
+
  private:
   struct PageEntry {
     TierBlockHandle handle;
@@ -37,8 +46,11 @@ class PageStore {
   };
 
   void RemoveFromBlockIndex(PageId id);
+  void SyncMetaPut(PageId id, const PageEntry& entry);
+  void SyncMetaDelete(PageId id);
 
   StorageTier* tier_;
+  MetaStore* meta_store_;
   size_t page_size_;
   std::unordered_map<PageId, PageEntry> page_index_;
   std::unordered_map<BlockId, std::set<uint16_t>> block_to_pages_;

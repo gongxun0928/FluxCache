@@ -79,4 +79,29 @@ size_t TierManager::CapacityLimit() const {
   return total;
 }
 
+bool TierManager::GetBlockTierInfo(uint64_t handle_id, TierType* out_type,
+                                  uint64_t* out_tier_block_id) const {
+  auto it = handle_to_tier_.find(handle_id);
+  if (it == handle_to_tier_.end()) return false;
+  *out_type = it->second.tier->GetTierType();
+  *out_tier_block_id = it->second.tier_handle.id;
+  return true;
+}
+
+TierBlockHandle TierManager::RegisterRecoveredBlock(TierType tier_type,
+                                                   uint64_t tier_block_id) {
+  TierBlockHandle result;
+  for (auto& tier : tiers_) {
+    if (tier->GetTierType() != tier_type) continue;
+    if (!tier->BlockExists(tier_block_id)) return result;
+    uint64_t global_id = next_global_id_++;
+    TierBlockHandle th;
+    th.id = tier_block_id;
+    handle_to_tier_[global_id] = {tier.get(), th};
+    result.id = global_id;
+    return result;
+  }
+  return result;
+}
+
 }  // namespace fluxcache

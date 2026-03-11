@@ -17,6 +17,7 @@ struct MasterConfig {
 
 struct WorkerConfig {
   std::string data_dir;
+  std::string metastore_path;  // RocksDB path; default data_dir/metastore
   std::string host = "0.0.0.0";
   uint16_t port = 0;
   uint32_t heartbeat_interval_ms = 5000;

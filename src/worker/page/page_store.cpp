@@ -1,12 +1,30 @@
 #include "worker/page/page_store.h"
+#include "worker/meta/meta_store.h"
+#include "worker/storage/tier_manager.h"
 
 #include <algorithm>
 
 namespace fluxcache {
 
-PageStore::PageStore(StorageTier* tier, size_t page_size)
-    : tier_(tier), page_size_(page_size) {
+PageStore::PageStore(StorageTier* tier, size_t page_size, MetaStore* meta_store)
+    : tier_(tier), meta_store_(meta_store), page_size_(page_size) {
   if (page_size_ == 0) page_size_ = 1024 * 1024;
+}
+
+void PageStore::SyncMetaPut(PageId id, const PageEntry& entry) {
+  if (!meta_store_) return;
+  TierType tt;
+  uint64_t tier_block_id;
+  if (!tier_->GetBlockTierInfo(entry.handle.id, &tt, &tier_block_id)) return;
+  PageMeta meta;
+  meta.tier_type = tt;
+  meta.tier_block_id = tier_block_id;
+  meta.cached_mtime_ms = entry.mtime_ms;
+  meta_store_->Put(id, meta);
+}
+
+void PageStore::SyncMetaDelete(PageId id) {
+  if (meta_store_) meta_store_->Delete(id);
 }
 
 Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
@@ -60,25 +78,29 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
 
   page_index_[id] = PageEntry{handle, mtime_ms};
   block_to_pages_[id.block_id].insert(id.page_index);
+  SyncMetaPut(id, page_index_[id]);
   return Status::OK();
 }
 
 Status PageStore::DeletePage(PageId id) {
   auto it = page_index_.find(id);
   if (it == page_index_.end()) {
-    return Status::OK();  // Idempotent: already deleted
+    SyncMetaDelete(id);  // Idempotent: ensure MetaStore clean
+    return Status::OK();
   }
 
   Status s = tier_->Release(it->second.handle);
   if (!s.ok()) return s;
   RemoveFromBlockIndex(id);
   page_index_.erase(it);
+  SyncMetaDelete(id);
   return Status::OK();
 }
 
 Status PageStore::DeleteBlockPages(BlockId block_id) {
   auto it = block_to_pages_.find(block_id);
   if (it == block_to_pages_.end()) {
+    if (meta_store_) meta_store_->DeleteByBlock(block_id);
     return Status::OK();  // Idempotent: no pages for this block
   }
 
@@ -89,11 +111,29 @@ Status PageStore::DeleteBlockPages(BlockId block_id) {
     Status s = DeletePage(id);
     if (!s.ok()) return s;
   }
+  if (meta_store_) meta_store_->DeleteByBlock(block_id);
   return Status::OK();
 }
 
 bool PageStore::Contains(PageId id) const {
   return page_index_.find(id) != page_index_.end();
+}
+
+void PageStore::RecoverFromMetaStore() {
+  if (!meta_store_ || !meta_store_->is_open()) return;
+  auto* tm = dynamic_cast<TierManager*>(tier_);
+  if (!tm) return;
+
+  meta_store_->ScanAll([this, tm](PageId id, const PageMeta& meta) {
+    TierBlockHandle handle = tm->RegisterRecoveredBlock(meta.tier_type,
+                                                        meta.tier_block_id);
+    if (handle.valid()) {
+      page_index_[id] = PageEntry{handle, meta.cached_mtime_ms};
+      block_to_pages_[id.block_id].insert(id.page_index);
+    } else {
+      meta_store_->Delete(id);  // Clean orphan: tier file missing
+    }
+  });
 }
 
 void PageStore::RemoveFromBlockIndex(PageId id) {
