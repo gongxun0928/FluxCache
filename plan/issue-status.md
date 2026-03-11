@@ -93,7 +93,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 |---|---|---|---|---|---|---|
 | P2-01 | SSD / HDD Tier 扩展 | P1 | P1-09 | completed | | 2026-03-11 实现并验证 |
 | P2-05 | MetaStore RocksDB 集成与恢复 | P1 | P2-01, P1-10 | completed | | 2026-03-11 实现并验证 |
-| P2-05B | Worker GC 与 orphan / misplaced block 对账 | P1 | P2-05, P1-05C, P1-15D | created | | |
+| P2-05B | Worker GC 与 orphan / misplaced block 对账 | P1 | P2-05, P1-05C, P1-15D | completed | | 2026-03-11 实现并验证 |
 
 ## Phase E：多 Worker 与传输增强
 
@@ -107,7 +107,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 |---|---|---|---|---|---|---|
 | P2-03 | 淘汰策略接口与 LRU 实现 | P1 | P1-10 | completed | | 2026-03-11 实现并验证 |
 | P2-02 | 自动层级晋升与淘汰流程 | P1 | P2-01, P2-03, P2-05 | completed | | 2026-03-11 实现并验证 |
-| P2-04 | LFU 淘汰策略 | P1 | P2-03, P2-02 | created | | |
+| P2-04 | LFU 淘汰策略 | P1 | P2-03, P2-02 | completed | | 2026-03-11 实现并验证 |
 
 ## Phase G：访问入口
 

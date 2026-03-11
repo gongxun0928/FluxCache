@@ -1,7 +1,9 @@
 #include "worker/page/page_store.h"
+#include "common/hash_ring.h"
 #include "worker/cache/eviction_policy.h"
 #include "worker/meta/meta_store.h"
 #include "worker/storage/tier_manager.h"
+#include <unordered_set>
 
 namespace fluxcache {
 
@@ -129,6 +131,10 @@ bool PageStore::Contains(PageId id) const {
   return page_index_.find(id) != page_index_.end();
 }
 
+bool PageStore::ContainsBlock(BlockId block_id) const {
+  return block_to_pages_.find(block_id) != block_to_pages_.end();
+}
+
 void PageStore::RecoverFromMetaStore() {
   if (!meta_store_ || !meta_store_->is_open()) return;
   auto* tm = dynamic_cast<TierManager*>(tier_);
@@ -197,6 +203,82 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
   page_index_[id] = PageEntry{new_handle, mtime_ms};
   SyncMetaPut(id, page_index_[id]);
   return tier_->Release(old_handle);
+}
+
+PageStore::GcAudit PageStore::ReconcileGc(
+    const std::vector<uint64_t>& orphan_inode_ids,
+    const std::vector<uint64_t>& misplaced_block_ids,
+    WorkerId my_worker_id,
+    const std::vector<WorkerId>& ring_worker_ids,
+    size_t batch_limit) {
+  GcAudit audit;
+  if (!meta_store_ || !meta_store_->is_open()) return audit;
+
+  std::unordered_set<uint64_t> orphan_set(orphan_inode_ids.begin(),
+                                          orphan_inode_ids.end());
+  std::unordered_set<uint64_t> misplaced_set(misplaced_block_ids.begin(),
+                                             misplaced_block_ids.end());
+
+  std::optional<SimpleHashRing> ring;
+  if (!ring_worker_ids.empty()) {
+    ring.emplace(ring_worker_ids);
+  }
+
+  std::unordered_set<uint64_t> cleaned_inodes;
+  std::unordered_set<uint64_t> cleaned_blocks;
+
+  std::optional<std::pair<BlockId, uint16_t>> start;
+  {
+    std::lock_guard<std::mutex> lock(gc_mu_);
+    start = gc_scan_cursor_;
+  }
+
+  std::optional<std::pair<BlockId, uint16_t>> last_seen;
+  std::unordered_set<BlockId> blocks_to_check;
+
+  size_t count = meta_store_->ScanPaginated(
+      start, batch_limit,
+      [&](PageId id, const PageMeta& /*meta*/) {
+        last_seen = {id.block_id, id.page_index};
+        blocks_to_check.insert(id.block_id);
+      });
+
+  {
+    std::lock_guard<std::mutex> lock(gc_mu_);
+    if (count < batch_limit) {
+      gc_scan_cursor_ = std::nullopt;
+    } else {
+      gc_scan_cursor_ = last_seen;
+    }
+  }
+
+  for (BlockId block_id : blocks_to_check) {
+    InodeId inode_id = GetInodeId(block_id);
+    bool is_orphan = orphan_set.count(static_cast<uint64_t>(inode_id)) > 0;
+    bool is_misplaced = misplaced_set.count(block_id) > 0;
+    if (!is_misplaced && ring) {
+      WorkerId owner = ring->GetWorker(block_id);
+      if (owner != my_worker_id) is_misplaced = true;
+    }
+    if (is_orphan || is_misplaced) {
+      Status s = DeleteBlockPages(block_id);
+      if (s.ok()) {
+        cleaned_blocks.insert(block_id);
+        if (is_orphan) cleaned_inodes.insert(static_cast<uint64_t>(inode_id));
+      }
+    }
+  }
+
+  for (BlockId block_id : misplaced_block_ids) {
+    if (cleaned_blocks.count(block_id) == 0) {
+      Status s = DeleteBlockPages(block_id);
+      if (s.ok()) cleaned_blocks.insert(block_id);
+    }
+  }
+
+  audit.audit_inode_ids.assign(cleaned_inodes.begin(), cleaned_inodes.end());
+  audit.audit_block_ids.assign(cleaned_blocks.begin(), cleaned_blocks.end());
+  return audit;
 }
 
 }  // namespace fluxcache

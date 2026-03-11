@@ -133,8 +133,8 @@ TEST(ProtoContractTest, WorkerEndpointFields) {
 TEST(ProtoContractTest, HeartbeatReservedFields) {
   HeartbeatRequest req;
   req.set_worker_id(1);
-  req.add_audit_inode_ids(100);
-  req.add_audit_block_ids(200);
+  req.add_orphan_inode_ids(100);
+  req.add_misplaced_block_ids(200);
 
   std::string serialized;
   ASSERT_TRUE(req.SerializeToString(&serialized));
@@ -143,10 +143,10 @@ TEST(ProtoContractTest, HeartbeatReservedFields) {
   ASSERT_TRUE(parsed.ParseFromString(serialized));
 
   EXPECT_EQ(parsed.worker_id(), 1u);
-  ASSERT_EQ(parsed.audit_inode_ids_size(), 1);
-  EXPECT_EQ(parsed.audit_inode_ids(0), 100u);
-  ASSERT_EQ(parsed.audit_block_ids_size(), 1);
-  EXPECT_EQ(parsed.audit_block_ids(0), 200u);
+  ASSERT_EQ(parsed.orphan_inode_ids_size(), 1);
+  EXPECT_EQ(parsed.orphan_inode_ids(0), 100u);
+  ASSERT_EQ(parsed.misplaced_block_ids_size(), 1);
+  EXPECT_EQ(parsed.misplaced_block_ids(0), 200u);
 }
 
 }  // namespace

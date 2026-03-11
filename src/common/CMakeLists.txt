@@ -1,4 +1,5 @@
 add_library(fluxcache_common STATIC
+  hash_ring.cpp
   status.cpp
   config/config.cpp
   metrics/metrics_registry.cpp

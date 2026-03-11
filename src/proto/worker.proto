@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package fluxcache.proto;
 
+import "common.proto";
+
 // WorkerService provides block-level read/write and heartbeat to clients.
 service WorkerService {
   rpc ReadPages(ReadPagesRequest) returns (ReadPagesResponse);
@@ -33,17 +35,21 @@ message WritePagesResponse {
   optional int64 ufs_mtime_ms = 1;  // mtime from UFS after write, for Client CompleteFile
 }
 
-// HeartbeatRequest: Phase 1 reserves GC fields; full GC logic not implemented.
+// HeartbeatRequest: Master sends to Worker. Tells Worker what to clean.
 message HeartbeatRequest {
   uint64 worker_id = 1;
-  // reserved for GC: audit_inode_ids, audit_block_ids
-  repeated uint64 audit_inode_ids = 2;
-  repeated uint64 audit_block_ids = 3;
+  // Orphan inodes (deleted files): Worker should DeleteBlockPages for these.
+  repeated uint64 orphan_inode_ids = 2;
+  // Misplaced blocks (no longer owned by this Worker): Worker should DeleteBlockPages.
+  repeated uint64 misplaced_block_ids = 3;
+  // Ring snapshot for Worker to compute misplaced locally (workers in ring order).
+  repeated WorkerEndpoint ring_workers = 4;
 }
 
-// HeartbeatResponse: Phase 1 reserves GC fields; full GC logic not implemented.
+// HeartbeatResponse: Worker sends to Master. Reports what was cleaned.
 message HeartbeatResponse {
-  // reserved for GC: orphan_inode_ids, misplaced_block_ids
-  repeated uint64 orphan_inode_ids = 1;
-  repeated uint64 misplaced_block_ids = 2;
+  // Inodes for which Worker cleaned blocks (audit confirmation).
+  repeated uint64 audit_inode_ids = 1;
+  // Blocks that Worker cleaned (audit confirmation).
+  repeated uint64 audit_block_ids = 2;
 }

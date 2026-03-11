@@ -226,11 +226,33 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
 
 ::grpc::Status WorkerServiceImpl::Heartbeat(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::HeartbeatRequest* /*request*/,
+    const ::fluxcache::proto::HeartbeatRequest* request,
     ::fluxcache::proto::HeartbeatResponse* response) {
   if (metrics_) metrics_->IncCounter("worker", "Heartbeat");
   RpcMetricsGuard _guard(metrics_, "Heartbeat");
-  (void)response;
+  if (!request || !response) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request/response");
+  }
+
+  WorkerId my_worker_id = static_cast<WorkerId>(request->worker_id());
+  std::vector<uint64_t> orphan_inode_ids(request->orphan_inode_ids().begin(),
+                                         request->orphan_inode_ids().end());
+  std::vector<uint64_t> misplaced_block_ids(request->misplaced_block_ids().begin(),
+                                            request->misplaced_block_ids().end());
+  std::vector<WorkerId> ring_worker_ids;
+  for (const auto& ep : request->ring_workers()) {
+    ring_worker_ids.push_back(static_cast<WorkerId>(ep.worker_id()));
+  }
+
+  auto audit = page_store_->ReconcileGc(orphan_inode_ids, misplaced_block_ids,
+                                        my_worker_id, ring_worker_ids);
+
+  for (uint64_t id : audit.audit_inode_ids) {
+    response->add_audit_inode_ids(id);
+  }
+  for (uint64_t id : audit.audit_block_ids) {
+    response->add_audit_block_ids(id);
+  }
   return ::grpc::Status::OK;
 }
 

@@ -21,3 +21,11 @@ target_link_libraries(cli_smoke_test PRIVATE fluxcache_client fluxcache_common
                                      fluxcache_worker fluxcache_ufs
                                      GTest::gtest_main)
 add_test(NAME cli_smoke_test COMMAND cli_smoke_test)
+
+add_executable(gc_reconciliation_test gc_reconciliation_test.cpp)
+target_include_directories(gc_reconciliation_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(gc_reconciliation_test PRIVATE fluxcache_client
+                                          fluxcache_common fluxcache_proto
+                                          fluxcache_master fluxcache_worker
+                                          fluxcache_ufs GTest::gtest_main)
+add_test(NAME gc_reconciliation_test COMMAND gc_reconciliation_test)

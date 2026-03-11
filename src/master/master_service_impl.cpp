@@ -1,8 +1,10 @@
 #include "master/master_service_impl.h"
 #include "common/metrics/metrics_registry.h"
 #include "common/status.h"
+#include "worker.grpc.pb.h"
 #include <chrono>
 #include <grpcpp/grpcpp.h>
+#include <set>
 #include <optional>
 #include <string>
 
@@ -307,11 +309,42 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree,
 
 ::grpc::Status MasterServiceImpl::DeleteFile(
     ::grpc::ServerContext* /*context*/,
-    const ::fluxcache::proto::DeleteFileRequest* /*request*/,
+    const ::fluxcache::proto::DeleteFileRequest* request,
     ::fluxcache::proto::DeleteFileResponse* /*response*/) {
   if (metrics_) metrics_->IncCounter("master", "DeleteFile");
   RpcMetricsGuard _guard(metrics_, "DeleteFile");
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "DeleteFile not implemented");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "DeleteFile: path is required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "DeleteFile: InodeTree not ready");
+  }
+
+  auto inode_id = path_resolver_.ResolveOrSync(request->path());
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "DeleteFile: path not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "DeleteFile: inode not found");
+  }
+  if (entry->is_directory()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "DeleteFile: cannot delete directory");
+  }
+
+  if (!inode_tree_->DeleteInode(*inode_id)) {
+    return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                          "DeleteFile: failed to delete inode");
+  }
+
+  AddPendingOrphan(*inode_id);
+  return ::grpc::Status::OK;
 }
 
 ::grpc::Status MasterServiceImpl::Mount(
@@ -371,6 +404,74 @@ void MasterServiceImpl::CheckWorkerHealthAndUpdateRing(
       now_ms, heartbeat_timeout_ms, suspect_grace_ms);
   for (WorkerId wid : newly_dead) {
     hash_ring_manager_.RemoveWorker(wid);
+  }
+}
+
+void MasterServiceImpl::AddPendingOrphan(InodeId inode_id) {
+  std::lock_guard<std::mutex> lock(orphan_mu_);
+  pending_orphan_inodes_.insert(static_cast<uint64_t>(inode_id));
+}
+
+void MasterServiceImpl::RemovePendingOrphans(
+    const std::vector<uint64_t>& audit_inode_ids) {
+  std::lock_guard<std::mutex> lock(orphan_mu_);
+  for (uint64_t id : audit_inode_ids) {
+    pending_orphan_inodes_.erase(id);
+  }
+}
+
+void MasterServiceImpl::RunHeartbeatToAllWorkers() {
+  auto workers = worker_manager_.GetAllWorkersInRing();
+  for (const auto& w : workers) {
+    if (w.state == WorkerState::kAlive) {
+      CallWorkerHeartbeat(w.worker_id, w.host, w.port);
+    }
+  }
+}
+
+void MasterServiceImpl::CallWorkerHeartbeat(WorkerId worker_id,
+                                            const std::string& host,
+                                            uint16_t port) {
+  std::string addr = host + ":" + std::to_string(port);
+  auto channel =
+      grpc::CreateChannel(addr, grpc::InsecureChannelCredentials());
+  fluxcache::proto::WorkerService::Stub stub(channel);
+
+  fluxcache::proto::HeartbeatRequest req;
+  req.set_worker_id(worker_id);
+  {
+    std::lock_guard<std::mutex> lock(orphan_mu_);
+    for (uint64_t id : pending_orphan_inodes_) {
+      req.add_orphan_inode_ids(id);
+    }
+  }
+
+  auto snap = hash_ring_manager_.GetRingSnapshot(
+      [this](WorkerId id) -> std::optional<WorkerEndpointInfo> {
+        auto info = worker_manager_.GetWorker(id);
+        if (!info) return std::nullopt;
+        WorkerEndpointInfo ep;
+        ep.worker_id = info->worker_id;
+        ep.host = info->host;
+        ep.port = info->port;
+        return ep;
+      });
+  for (const auto& w : snap.workers) {
+    auto* ep = req.add_ring_workers();
+    ep->set_worker_id(w.worker_id);
+    ep->set_host(w.host);
+    ep->set_port(w.port);
+  }
+
+  fluxcache::proto::HeartbeatResponse resp;
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  auto status = stub.Heartbeat(&ctx, req, &resp);
+
+  if (status.ok()) {
+    RemovePendingOrphans(
+        std::vector<uint64_t>(resp.audit_inode_ids().begin(),
+                              resp.audit_inode_ids().end()));
   }
 }
 

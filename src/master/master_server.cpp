@@ -4,6 +4,7 @@
 #include "common/metrics/http_metrics_server.h"
 #include "common/metrics/metrics_registry.h"
 #include <grpcpp/grpcpp.h>
+#include <chrono>
 
 namespace fluxcache {
 
@@ -38,10 +39,26 @@ bool MasterServer::Start() {
   builder.AddListeningPort(addr, ::grpc::InsecureServerCredentials());
   builder.RegisterService(service_impl_.get());
   server_ = builder.BuildAndStart();
-  return server_ != nullptr;
+  if (!server_) return false;
+
+  heartbeat_stop_.store(false);
+  heartbeat_thread_ = std::thread([this]() {
+    while (!heartbeat_stop_.load(std::memory_order_relaxed)) {
+      std::this_thread::sleep_for(std::chrono::seconds(10));
+      if (heartbeat_stop_.load(std::memory_order_relaxed)) break;
+      if (service_impl_) {
+        service_impl_->RunHeartbeatToAllWorkers();
+      }
+    }
+  });
+  return true;
 }
 
 void MasterServer::Shutdown() {
+  heartbeat_stop_.store(true);
+  if (heartbeat_thread_.joinable()) {
+    heartbeat_thread_.join();
+  }
   if (http_metrics_server_) {
     http_metrics_server_->Shutdown();
   }

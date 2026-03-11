@@ -25,6 +25,9 @@ class WorkerServer {
   // Gracefully shutdown the server. Safe to call multiple times.
   void Shutdown();
 
+  // For testing: access PageStore to verify GC.
+  PageStore* page_store() { return page_store_.get(); }
+
  private:
   static constexpr size_t kPageSize = 1024 * 1024;    // 1MB
   static constexpr size_t kBlockSize = 64ULL * 1024 * 1024;  // 64MB

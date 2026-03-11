@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <rocksdb/db.h>
+#include <utility>
 #include <string>
 
 namespace fluxcache {
@@ -30,6 +31,14 @@ class MetaStore {
   void ScanAll(std::function<void(PageId id, const PageMeta& meta)> fn);
   void ScanBlock(BlockId block_id,
                  std::function<void(PageId id, const PageMeta& meta)> fn);
+
+  // Paginated scan to avoid full ScanAll. Processes up to limit entries.
+  // start_after: optional PageId to resume from (exclusive).
+  // Returns number of entries processed.
+  size_t ScanPaginated(
+      std::optional<std::pair<BlockId, uint16_t>> start_after,
+      size_t limit,
+      std::function<void(PageId id, const PageMeta& meta)> fn);
 
  private:
   rocksdb::DB* db_ = nullptr;

@@ -2,8 +2,10 @@
 
 #include "common/config/config.h"
 #include <grpcpp/grpcpp.h>
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace fluxcache {
 
@@ -26,6 +28,8 @@ class MasterServer {
 
   InodeTree* inode_tree() { return inode_tree_.get(); }
 
+  MasterServiceImpl* service_impl() { return service_impl_.get(); }
+
  private:
   MasterConfig config_;
   std::unique_ptr<InodeTree> inode_tree_;
@@ -33,6 +37,8 @@ class MasterServer {
   std::unique_ptr<MasterServiceImpl> service_impl_;
   std::unique_ptr<HttpMetricsServer> http_metrics_server_;
   std::unique_ptr<::grpc::Server> server_;
+  std::atomic<bool> heartbeat_stop_{false};
+  std::thread heartbeat_thread_;
 };
 
 }  // namespace fluxcache

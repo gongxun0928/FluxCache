@@ -5,11 +5,13 @@
 #include "worker/storage/storage_tier.h"
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace fluxcache {
 
@@ -38,6 +40,7 @@ class PageStore {
   Status DeletePage(PageId id);
   Status DeleteBlockPages(BlockId block_id);
   bool Contains(PageId id) const;
+  bool ContainsBlock(BlockId block_id) const;
 
   // Recovers page_index_ from MetaStore. Requires tier to be TierManager and
   // meta_store set. Cleans orphan MetaStore entries when tier file missing.
@@ -49,6 +52,18 @@ class PageStore {
   // Relocates a page to the target tier. Requires tier to be TierManager.
   // Does not notify EvictionPolicy (page remains in cache).
   Status RelocatePage(PageId id, TierType target_tier);
+
+  // GC reconciliation: clean orphan and misplaced blocks. Uses paginated scan.
+  // Returns (audit_inode_ids, audit_block_ids) for blocks actually cleaned.
+  struct GcAudit {
+    std::vector<uint64_t> audit_inode_ids;
+    std::vector<uint64_t> audit_block_ids;
+  };
+  GcAudit ReconcileGc(const std::vector<uint64_t>& orphan_inode_ids,
+                      const std::vector<uint64_t>& misplaced_block_ids,
+                      WorkerId my_worker_id,
+                      const std::vector<WorkerId>& ring_worker_ids,
+                      size_t batch_limit = 1000);
 
  private:
   struct PageEntry {
@@ -66,6 +81,9 @@ class PageStore {
   size_t page_size_;
   std::unordered_map<PageId, PageEntry> page_index_;
   std::unordered_map<BlockId, std::set<uint16_t>> block_to_pages_;
+
+  std::mutex gc_mu_;
+  std::optional<std::pair<BlockId, uint16_t>> gc_scan_cursor_;
 };
 
 }  // namespace fluxcache

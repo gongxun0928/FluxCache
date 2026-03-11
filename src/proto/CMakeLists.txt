@@ -40,6 +40,7 @@ add_custom_command(
        -I"${PROTO_IMPORT_DIR}"
        "${CMAKE_CURRENT_SOURCE_DIR}/worker.proto"
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/worker.proto"
+          "${CMAKE_CURRENT_SOURCE_DIR}/common.proto"
   COMMENT "Generating C++ and gRPC from worker.proto"
 )
 

@@ -1,4 +1,5 @@
 #include "worker/meta/meta_store.h"
+#include "worker/meta/page_meta.h"
 #include <cstring>
 #include <rocksdb/options.h>
 #include <rocksdb/slice.h>
@@ -146,6 +147,43 @@ void MetaStore::ScanBlock(
     }
     it->Next();
   }
+}
+
+size_t MetaStore::ScanPaginated(
+    std::optional<std::pair<BlockId, uint16_t>> start_after,
+    size_t limit,
+    std::function<void(PageId id, const PageMeta& meta)> fn) {
+  if (!db_ || limit == 0) return 0;
+  std::unique_ptr<rocksdb::Iterator> it(
+      db_->NewIterator(rocksdb::ReadOptions(), pages_cf_));
+  if (start_after) {
+    std::string start_key = EncodePageMetaKey(start_after->first,
+                                              start_after->second);
+    it->Seek(start_key);
+    if (it->Valid() && it->key() == start_key) {
+      it->Next();
+    }
+  } else {
+    it->SeekToFirst();
+  }
+  size_t count = 0;
+  while (it->Valid() && count < limit) {
+    rocksdb::Slice k = it->key();
+    if (k.size() >= 10) {
+      BlockId block_id;
+      uint16_t page_index;
+      if (DecodePageMetaKey(std::string_view(k.data(), k.size()), &block_id,
+                            &page_index)) {
+        auto meta = DecodePageMetaValue(it->value().ToString());
+        if (meta) {
+          fn(PageId{block_id, page_index}, *meta);
+          ++count;
+        }
+      }
+    }
+    it->Next();
+  }
+  return count;
 }
 
 }  // namespace fluxcache
