@@ -124,7 +124,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 |---|---|---|---|---|---|---|
 | P2-07 | S3 UFS 驱动（父 issue） | P1 | P1-11 | completed | | 2026-03-11 stub 实现，由 P2-07A/B 升级为真实 |
 | P2-07A | vcpkg 依赖管理与 minio-cpp 集成 | P1 | P1-01, P2-07 | completed | | 2026-03-11 实现并验证 |
-| P2-07B | S3UFS 真实实现（基于 minio-cpp） | P1 | P2-07A, P1-11 | in_progress | | |
+| P2-07B | S3UFS 真实实现（基于 minio-cpp） | P1 | P2-07A, P1-11 | completed | | 2026-03-11 实现，需 vcpkg+minio-cpp 构建验证 |
 | P3-01 | HDFS UFS 驱动 | P1 | P1-11 | completed | | 2026-03-11 stub 实现，需 libhdfs 启用真实功能 |
 
 ## Phase I：HA 与弹性

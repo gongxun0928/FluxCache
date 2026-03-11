@@ -16,7 +16,7 @@ vcpkg + minio-cpp 实现 S3/MinIO 真实读写
 | Issue | 状态 | 备注 |
 |-------|------|------|
 | P2-07A | completed | 2026-03-11 |
-| P2-07B | in_progress | 依赖已解除 |
+| P2-07B | completed | 2026-03-11 |
 
 ## 依赖解除
 
