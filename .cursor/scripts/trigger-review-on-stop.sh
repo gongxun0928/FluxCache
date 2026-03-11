@@ -21,6 +21,8 @@ CONV_ID=""
 GEN_ID=""
 DRY_RUN=0
 REVIEW_BLOCK_MODE="${REVIEW_BLOCK_MODE:-soft}" # off | soft | hard
+RALPH_WIGGUM_LOOP="${RALPH_WIGGUM_LOOP:-1}"   # 1=评审不通过时自动修复再评，0=关闭
+MAX_FIX_ROUNDS="${MAX_FIX_ROUNDS:-2}"        # 最多修复轮数
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -180,33 +182,60 @@ notify_blocker() {
   fi
 }
 
+run_fix_agent() {
+  local summary_file="$1"
+  local base="${summary_file%-summary.md}"
+  local feedback_condensed
+  feedback_condensed="$( { head -80 "$summary_file"
+    for name in feasibility correctness maintainability design; do
+      [[ -f "${base}-${name}.txt" ]] && echo "--- ${name} ---" && head -50 "${base}-${name}.txt"
+    done; } 2>/dev/null | head -200)"
+  local prompt="[Task] 根据以下评审反馈修复代码。修改后输出 DONE。
+
+${feedback_condensed}
+
+Project: ${PROJECT_ROOT}
+Workspace: 使用 Read/Write 工具修改 ${PROJECT_ROOT} 下的文件。"
+  log "fix_agent: starting for summary=$summary_file"
+  if "$CURSOR_AGENT" --model "gpt-5.3-codex" --output-format text --trust --force \
+      --workspace "$PROJECT_ROOT" -p "$prompt" > "${summary_file}.fix-out" 2>"${summary_file}.fix-err"; then
+    log "fix_agent: done"
+    return 0
+  fi
+  log "fix_agent: failed"
+  return 1
+}
+
 AGENTS_DIR_PROJECT="${PROJECT_ROOT}/.cursor/agents"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-PREFIX="${OUTPUT_DIR}/auto-review-${TIMESTAMP}-${GEN_ID}"
-
-FAIL=0
-run_one_reviewer "feasibility" "${AGENTS_DIR_PROJECT}/reviewer-feasibility.md" "gpt-5.3-codex" "${PREFIX}-feasibility.txt" || FAIL=$((FAIL + 1))
-run_one_reviewer "correctness" "${AGENTS_DIR_PROJECT}/reviewer-correctness.md" "gpt-5.3-codex" "${PREFIX}-correctness.txt" || FAIL=$((FAIL + 1))
-run_one_reviewer "maintainability" "${AGENTS_DIR_PROJECT}/reviewer-maintainability.md" "gpt-5.3-codex" "${PREFIX}-maintainability.txt" || FAIL=$((FAIL + 1))
-run_one_reviewer "design" "${AGENTS_DIR_PROJECT}/reviewer-design.md" "gpt-5.3-codex" "${PREFIX}-design.txt" || FAIL=$((FAIL + 1))
-
-R_FEASIBILITY="$(extract_reviewer_result "${PREFIX}-feasibility.txt")"
-R_CORRECTNESS="$(extract_reviewer_result "${PREFIX}-correctness.txt")"
-R_MAINTAINABILITY="$(extract_reviewer_result "${PREFIX}-maintainability.txt")"
-R_DESIGN="$(extract_reviewer_result "${PREFIX}-design.txt")"
-
 OVERALL_RESULT="PASS"
-for r in "$R_FEASIBILITY" "$R_CORRECTNESS" "$R_MAINTAINABILITY" "$R_DESIGN"; do
-  if [[ "$r" == "BLOCKER" ]]; then
-    OVERALL_RESULT="BLOCKER"
-    break
-  fi
-  if [[ "$r" == "NEEDS_REVISION" && "$OVERALL_RESULT" == "PASS" ]]; then
-    OVERALL_RESULT="NEEDS_REVISION"
-  fi
-done
+SUMMARY_FILE=""
+fix_round=0
 
-SUMMARY_FILE="${PREFIX}-summary.md"
+while true; do
+  CHANGED_SUMMARY="$(git -C "$PROJECT_ROOT" status --porcelain)"
+  DIFF_CONTENT="$(git -C "$PROJECT_ROOT" diff -- . ':(exclude)design/design-review-sessions/*' | sed -n '1,900p')"
+  [[ -z "$DIFF_CONTENT" ]] && DIFF_CONTENT="[diff too large or empty after filters]"
+
+  PREFIX="${OUTPUT_DIR}/auto-review-${TIMESTAMP}-${GEN_ID}-r${fix_round}"
+  FAIL=0
+  run_one_reviewer "feasibility" "${AGENTS_DIR_PROJECT}/reviewer-feasibility.md" "gpt-5.3-codex" "${PREFIX}-feasibility.txt" || FAIL=$((FAIL + 1))
+  run_one_reviewer "correctness" "${AGENTS_DIR_PROJECT}/reviewer-correctness.md" "gpt-5.3-codex" "${PREFIX}-correctness.txt" || FAIL=$((FAIL + 1))
+  run_one_reviewer "maintainability" "${AGENTS_DIR_PROJECT}/reviewer-maintainability.md" "gpt-5.3-codex" "${PREFIX}-maintainability.txt" || FAIL=$((FAIL + 1))
+  run_one_reviewer "design" "${AGENTS_DIR_PROJECT}/reviewer-design.md" "gpt-5.3-codex" "${PREFIX}-design.txt" || FAIL=$((FAIL + 1))
+
+  R_FEASIBILITY="$(extract_reviewer_result "${PREFIX}-feasibility.txt")"
+  R_CORRECTNESS="$(extract_reviewer_result "${PREFIX}-correctness.txt")"
+  R_MAINTAINABILITY="$(extract_reviewer_result "${PREFIX}-maintainability.txt")"
+  R_DESIGN="$(extract_reviewer_result "${PREFIX}-design.txt")"
+
+  OVERALL_RESULT="PASS"
+  for r in "$R_FEASIBILITY" "$R_CORRECTNESS" "$R_MAINTAINABILITY" "$R_DESIGN"; do
+    if [[ "$r" == "BLOCKER" ]]; then OVERALL_RESULT="BLOCKER"; break; fi
+    if [[ "$r" == "NEEDS_REVISION" && "$OVERALL_RESULT" == "PASS" ]]; then OVERALL_RESULT="NEEDS_REVISION"; fi
+  done
+
+  SUMMARY_FILE="${PREFIX}-summary.md"
 {
   echo "# Auto Review Summary"
   echo
@@ -229,6 +258,7 @@ SUMMARY_FILE="${PREFIX}-summary.md"
   echo "- maintainability: ${R_MAINTAINABILITY}"
   echo "- design: ${R_DESIGN}"
   echo "- overall: ${OVERALL_RESULT}"
+  echo "- round: ${fix_round}"
   echo
   if [[ $FAIL -eq 0 ]]; then
     echo "## Result"
@@ -238,6 +268,21 @@ SUMMARY_FILE="${PREFIX}-summary.md"
     echo "- trigger execution: PARTIAL_FAIL (${FAIL} reviewer failed)"
   fi
 } > "$SUMMARY_FILE"
+
+  if [[ "$OVERALL_RESULT" == "PASS" ]]; then
+    break
+  fi
+  if [[ "$RALPH_WIGGUM_LOOP" != "1" ]] || [[ "$fix_round" -ge "$MAX_FIX_ROUNDS" ]]; then
+    log "ralph_wiggum: stop (loop=$RALPH_WIGGUM_LOOP round=$fix_round max=$MAX_FIX_ROUNDS)"
+    break
+  fi
+  if ! run_fix_agent "$SUMMARY_FILE"; then
+    log "ralph_wiggum: fix agent failed, stop"
+    break
+  fi
+  fix_round=$((fix_round + 1))
+  log "ralph_wiggum: starting round $fix_round"
+done
 
 rm -f "$PASS_MARKER" "$FAIL_MARKER"
 case "$REVIEW_BLOCK_MODE" in

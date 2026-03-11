@@ -1,5 +1,5 @@
 ---
-description: 记录并复用历史错误，避免重复犯错
+description: 记录并复用历史错误，避免重复犯错；失败时追问能力缺口
 alwaysApply: false
 ---
 
@@ -8,4 +8,5 @@ alwaysApply: false
 - 仅在任务中出现新的构建、测试、lint 或回滚错误时使用。
 - 若存在 `docs/ai-mistakes.md`，可先读取历史经验。
 - 修复错误后，只记录一条最小经验：场景、错误、修复、防再犯规则、验证。
+- **能力缺口**：若反复失败，追问「还缺什么能力、如何写成 rule/skill 可执行」，写入 `docs/ai-mistakes.md` 的「能力缺口」段落，并据此更新 rules/skills。
 - 无新增错误则不记录。
