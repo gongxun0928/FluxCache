@@ -9,6 +9,10 @@ Status Status::NotFound(const char* msg) {
   return Status(StatusCode::kNotFound, msg);
 }
 
+Status Status::AlreadyExists(const char* msg) {
+  return Status(StatusCode::kAlreadyExists, msg ? msg : "already exists");
+}
+
 Status Status::IOError(const char* msg) {
   return Status(StatusCode::kIOError, msg);
 }

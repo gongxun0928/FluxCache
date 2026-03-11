@@ -217,7 +217,9 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree)
                           "CreateFile: path already exists");
   }
 
-  auto inode_id = inode_tree_->CreateFile(path);
+  constexpr uint64_t kDefaultBlockSize = 64ULL * 1024 * 1024;  // 64MB
+  auto inode_id =
+      inode_tree_->CreateFile(path, 0, kDefaultBlockSize, NowMs());
   if (!inode_id.has_value()) {
     return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                           "CreateFile: failed to create inode");

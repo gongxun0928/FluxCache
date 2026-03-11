@@ -110,7 +110,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
 ::grpc::Status WorkerServiceImpl::WritePages(
     ::grpc::ServerContext* /*context*/,
     const ::fluxcache::proto::WritePagesRequest* request,
-    ::fluxcache::proto::WritePagesResponse* /*response*/) {
+    ::fluxcache::proto::WritePagesResponse* response) {
   if (!request) {
     return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, "null request");
   }
@@ -192,6 +192,9 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     }
   }
 
+  if (response) {
+    response->set_ufs_mtime_ms(mtime_ms);
+  }
   return ::grpc::Status::OK;
 }
 

@@ -7,6 +7,7 @@
 #include "common/rpc/channel_pool.h"
 #include "common/status.h"
 #include <memory>
+#include <string_view>
 
 namespace fluxcache {
 
@@ -30,6 +31,12 @@ class FluxCacheClient {
   /// Uses GetFileInfo, block/page split, Worker ReadPages, and retry on failure.
   StatusOr<std::string> Read(const std::string& path, uint64_t offset,
                             uint64_t size);
+
+  /// Write data at [offset, offset+data.size()). New file: CreateFile; existing:
+  /// GetFileInfo. Splits by block/page, calls WritePages, then CompleteFile.
+  /// On WritePages failure, does NOT call CompleteFile.
+  Status Write(const std::string& path, uint64_t offset,
+               std::string_view data);
 
   MasterClient* GetMasterClient() { return master_client_.get(); }
   CachedHashRing* GetCachedHashRing() { return &cached_ring_; }

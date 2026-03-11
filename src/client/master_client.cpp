@@ -69,6 +69,77 @@ StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
   return Status::IOError(grpc_status.error_message().c_str());
 }
 
+StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
+    const std::string& path) {
+  auto channel = pool_->GetChannel(master_address_);
+  if (!channel) {
+    return Status::Unavailable("failed to get channel for master");
+  }
+
+  fluxcache::proto::MasterService::Stub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() +
+                   std::chrono::seconds(deadline_sec_));
+
+  proto::CreateFileRequest req;
+  req.set_path(path);
+  proto::CreateFileResponse resp;
+
+  auto grpc_status = stub.CreateFile(&ctx, req, &resp);
+
+  if (grpc_status.ok()) {
+    return resp;
+  }
+
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::ALREADY_EXISTS) {
+    return Status::AlreadyExists(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
+Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
+                                  std::optional<int64_t> ufs_mtime_ms) {
+  auto channel = pool_->GetChannel(master_address_);
+  if (!channel) {
+    return Status::Unavailable("failed to get channel for master");
+  }
+
+  fluxcache::proto::MasterService::Stub stub(channel);
+  grpc::ClientContext ctx;
+  ctx.set_deadline(std::chrono::system_clock::now() +
+                   std::chrono::seconds(deadline_sec_));
+
+  proto::CompleteFileRequest req;
+  req.set_inode_id(inode_id);
+  req.set_size(size);
+  if (ufs_mtime_ms.has_value()) {
+    req.set_ufs_mtime_ms(*ufs_mtime_ms);
+  }
+  proto::CompleteFileResponse resp;
+
+  auto grpc_status = stub.CompleteFile(&ctx, req, &resp);
+
+  if (grpc_status.ok()) {
+    return Status::OK();
+  }
+
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
 Status MasterClient::Mount(const std::string& path,
                            const std::string& ufs_uri) {
   auto channel = pool_->GetChannel(master_address_);

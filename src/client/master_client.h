@@ -5,6 +5,7 @@
 #include "common/status.h"
 #include "master.pb.h"
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace fluxcache {
@@ -25,6 +26,13 @@ class MasterClient {
   /// Get file metadata from Master. Returns NotFound if path not found,
   /// Unavailable on DEADLINE_EXCEEDED or UNAVAILABLE.
   StatusOr<proto::GetFileInfoResponse> GetFileInfo(const std::string& path);
+
+  /// Create new file at path. Returns AlreadyExists if path exists.
+  StatusOr<proto::CreateFileResponse> CreateFile(const std::string& path);
+
+  /// Complete file write: update size and mtime. Call after WritePages succeed.
+  Status CompleteFile(uint64_t inode_id, uint64_t size,
+                     std::optional<int64_t> ufs_mtime_ms = std::nullopt);
 
   /// Mount UFS at path. For test/setup.
   Status Mount(const std::string& path, const std::string& ufs_uri);

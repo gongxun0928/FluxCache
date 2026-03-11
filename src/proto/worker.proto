@@ -29,7 +29,9 @@ message WritePagesRequest {
   string ufs_path = 5;
 }
 
-message WritePagesResponse {}
+message WritePagesResponse {
+  optional int64 ufs_mtime_ms = 1;  // mtime from UFS after write, for Client CompleteFile
+}
 
 // HeartbeatRequest: Phase 1 reserves GC fields; full GC logic not implemented.
 message HeartbeatRequest {

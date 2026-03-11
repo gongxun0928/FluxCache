@@ -177,4 +177,164 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
   return result;
 }
 
+Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
+                             std::string_view data) {
+  InodeId inode_id = 0;
+  uint64_t file_size = 0;
+  size_t block_size = 0;
+  std::string ufs_uri, ufs_path;
+
+  auto fi_result = master_client_->GetFileInfo(path);
+  if (fi_result.ok()) {
+    const proto::GetFileInfoResponse& fi_resp = fi_result.value();
+    const proto::FileInfo& fi = fi_resp.file_info();
+    if (fi.is_directory()) {
+      return Status::InvalidArgument("cannot write directory");
+    }
+    inode_id = fi.inode_id();
+    file_size = fi.size();
+    block_size = fi.block_size();
+    ufs_uri = fi_resp.ufs_uri();
+    ufs_path = fi_resp.ufs_path();
+
+    proto::GetHashRingResponse ring_resp;
+    ring_resp.set_ring_version(fi_resp.ring_version());
+    for (const auto& w : fi_resp.workers()) {
+      *ring_resp.add_workers() = w;
+    }
+    cached_ring_.Update(ring_resp);
+    ring_fetched_ = true;
+  } else if (fi_result.status().code() == StatusCode::kNotFound) {
+    auto create_result = master_client_->CreateFile(path);
+    if (!create_result.ok()) {
+      if (create_result.status().code() == StatusCode::kAlreadyExists) {
+        fi_result = master_client_->GetFileInfo(path);
+        if (!fi_result.ok()) return fi_result.status();
+        const proto::GetFileInfoResponse& fi_resp = fi_result.value();
+        const proto::FileInfo& fi = fi_resp.file_info();
+        inode_id = fi.inode_id();
+        file_size = fi.size();
+        block_size = fi.block_size();
+        ufs_uri = fi_resp.ufs_uri();
+        ufs_path = fi_resp.ufs_path();
+        proto::GetHashRingResponse ring_resp;
+        ring_resp.set_ring_version(fi_resp.ring_version());
+        for (const auto& w : fi_resp.workers()) {
+          *ring_resp.add_workers() = w;
+        }
+        cached_ring_.Update(ring_resp);
+        ring_fetched_ = true;
+      } else {
+        return create_result.status();
+      }
+    } else {
+      const proto::CreateFileResponse& cr = create_result.value();
+      inode_id = cr.file_info().inode_id();
+      file_size = cr.file_info().size();
+      block_size = cr.file_info().block_size();
+      ufs_uri = cr.ufs_uri();
+      ufs_path = cr.ufs_path();
+      Status s = RefreshRing();
+      if (!s.ok()) return s;
+    }
+  } else {
+    return fi_result.status();
+  }
+
+  if (block_size == 0) {
+    return Status::InvalidArgument("invalid block_size from Master");
+  }
+  if (ufs_uri.empty() || ufs_path.empty()) {
+    return Status::InvalidArgument("missing ufs_uri/ufs_path");
+  }
+
+  uint64_t new_size = (offset + data.size() > file_size)
+                          ? (offset + data.size())
+                          : file_size;
+
+  if (data.empty()) {
+    if (new_size != file_size) {
+      return master_client_->CompleteFile(inode_id, new_size, std::nullopt);
+    }
+    return Status::OK();
+  }
+
+  uint32_t first_block_idx =
+      static_cast<uint32_t>(offset / block_size);
+  uint32_t last_block_idx =
+      static_cast<uint32_t>((offset + data.size() - 1) / block_size);
+
+  int64_t last_mtime_ms = 0;
+
+  for (uint32_t bi = first_block_idx; bi <= last_block_idx; ++bi) {
+    BlockId block_id = MakeBlockId(inode_id, bi);
+    uint64_t block_start = static_cast<uint64_t>(bi) * block_size;
+    uint64_t block_end = block_start + block_size;
+    uint64_t end_offset = offset + data.size();
+
+    uint64_t overlap_start = std::max(offset, block_start);
+    uint64_t overlap_end = std::min(end_offset, block_end);
+    if (overlap_start >= overlap_end) continue;
+
+    uint64_t block_local_start = overlap_start - block_start;
+    uint64_t block_local_end = overlap_end - block_start;
+
+    uint32_t first_page =
+        static_cast<uint32_t>(block_local_start / page_size_);
+    uint32_t last_page =
+        static_cast<uint32_t>((block_local_end - 1) / page_size_);
+
+    std::string page_data;
+    for (uint32_t pi = first_page; pi <= last_page; ++pi) {
+      uint64_t page_start_file =
+          block_start + static_cast<uint64_t>(pi) * page_size_;
+      uint64_t page_end_file = page_start_file + page_size_;
+      uint64_t page_overlap_start = std::max(overlap_start, page_start_file);
+      uint64_t page_overlap_end = std::min(overlap_end, page_end_file);
+
+      size_t pad_before = page_overlap_start - page_start_file;
+      size_t copy_len = page_overlap_end - page_overlap_start;
+      size_t data_offset_in_buf = page_overlap_start - offset;
+
+      std::string full_page(page_size_, '\0');
+      if (copy_len > 0 && data_offset_in_buf < data.size()) {
+        size_t actual_copy = std::min(copy_len, data.size() - data_offset_in_buf);
+        data.copy(full_page.data() + pad_before, actual_copy, data_offset_in_buf);
+      }
+      page_data += full_page;
+    }
+
+    proto::WritePagesRequest req;
+    req.set_block_id(block_id);
+    req.set_ufs_uri(ufs_uri);
+    req.set_ufs_path(ufs_path);
+    for (uint32_t pi = first_page; pi <= last_page; ++pi) {
+      req.add_page_indices(pi);
+    }
+    req.set_data(std::move(page_data));
+
+    auto worker_result = GetWorkerForBlock(block_id);
+    if (!worker_result.ok()) {
+      return worker_result.status();
+    }
+    auto client_result = GetWorkerClient(worker_result.value());
+    if (!client_result.ok()) {
+      return client_result.status();
+    }
+
+    proto::WritePagesResponse write_resp;
+    Status s = client_result.value()->WritePages(req, &write_resp);
+    if (!s.ok()) {
+      return s;
+    }
+    if (write_resp.has_ufs_mtime_ms()) {
+      last_mtime_ms = write_resp.ufs_mtime_ms();
+    }
+  }
+
+  return master_client_->CompleteFile(
+      inode_id, new_size,
+      last_mtime_ms != 0 ? std::optional<int64_t>(last_mtime_ms) : std::nullopt);
+}
+
 }  // namespace fluxcache
