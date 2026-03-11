@@ -2,6 +2,10 @@ add_library(fluxcache_worker STATIC
   worker_server.cpp
   worker_service_impl.cpp
   storage/memory_tier.cpp
+  storage/file_tier.cpp
+  storage/ssd_tier.cpp
+  storage/hdd_tier.cpp
+  storage/tier_manager.cpp
   page/page_store.cpp
   cache/lru_policy.cpp
   cache/eviction_policy_factory.cpp

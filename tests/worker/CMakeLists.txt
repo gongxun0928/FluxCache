@@ -8,6 +8,21 @@ target_include_directories(memory_tier_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(memory_tier_test PRIVATE fluxcache_worker fluxcache_proto GTest::gtest_main)
 add_test(NAME memory_tier_test COMMAND memory_tier_test)
 
+add_executable(ssd_tier_test ssd_tier_test.cpp)
+target_include_directories(ssd_tier_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(ssd_tier_test PRIVATE fluxcache_worker fluxcache_proto GTest::gtest_main)
+add_test(NAME ssd_tier_test COMMAND ssd_tier_test)
+
+add_executable(hdd_tier_test hdd_tier_test.cpp)
+target_include_directories(hdd_tier_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(hdd_tier_test PRIVATE fluxcache_worker fluxcache_proto GTest::gtest_main)
+add_test(NAME hdd_tier_test COMMAND hdd_tier_test)
+
+add_executable(tier_manager_test tier_manager_test.cpp)
+target_include_directories(tier_manager_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(tier_manager_test PRIVATE fluxcache_worker fluxcache_proto GTest::gtest_main)
+add_test(NAME tier_manager_test COMMAND tier_manager_test)
+
 add_executable(page_store_test page_store_test.cpp)
 target_include_directories(page_store_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(page_store_test PRIVATE fluxcache_worker fluxcache_proto GTest::gtest_main)
