@@ -194,16 +194,16 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
       const std::string& data = read_resp.data();
       size_t pos = 0;
       for (uint32_t pi : missing_pages) {
-        if (pos + page_size_ <= data.size()) {
-          std::string chunk = data.substr(pos, page_size_);
-          page_data[pi] = chunk;
-          if (cache_) {
-            std::vector<uint8_t> vec(chunk.begin(), chunk.end());
-            cache_->Put(MakePageId(block_id, static_cast<uint16_t>(pi)),
-                       std::move(vec), expected_mtime_ms);
-          }
-          pos += page_size_;
+        if (pos >= data.size()) break;
+        size_t chunk_len = std::min(page_size_, data.size() - pos);
+        std::string chunk = data.substr(pos, chunk_len);
+        page_data[pi] = chunk;
+        if (cache_) {
+          std::vector<uint8_t> vec(chunk.begin(), chunk.end());
+          cache_->Put(MakePageId(block_id, static_cast<uint16_t>(pi)),
+                     std::move(vec), expected_mtime_ms);
         }
+        pos += chunk_len;
       }
     }
 
