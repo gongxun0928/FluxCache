@@ -1,0 +1,4 @@
+add_executable(regression_smoke_test regression_smoke_test.cpp)
+target_link_libraries(regression_smoke_test PRIVATE GTest::gtest_main)
+add_test(NAME regression_smoke_test COMMAND regression_smoke_test)
+set_tests_properties(regression_smoke_test PROPERTIES LABELS regression)

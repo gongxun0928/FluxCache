@@ -116,7 +116,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P1-12 | CLI smoke 工具 | P2 | P1-14D, P1-15D | completed | | 2026-03-11 实现并验证 |
 | P2-09 | C++ SDK MVP（不含 rename / 目录变更） | P1 | P1-14D, P1-15D, P2-08 | completed | | 2026-03-11 实现并验证 |
 | P2-11 | Client 本地 Page 内存缓存 | P1 | P2-09, P1-16 | completed | | 2026-03-11 实现并验证 |
-| P2-06 | FUSE 挂载基础能力 | P1 | P2-09 | created | | |
+| P2-06 | FUSE 挂载基础能力 | P1 | P2-09 | completed | | 2026-03-11 实现并验证 |
 
 ## Phase H：后端扩展
 
@@ -143,4 +143,4 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P3-04 | 零拷贝与减少复制路径调研/落地 | P1 | P1-15D, P3-03 | created | | |
 | P3-08 | 可观测性指标扩展 | P2 | P1-13, P2-02, P3-05 | created | | |
 | P3-09 | 慢请求与热点页追踪 | P2 | P3-08 | created | | |
-| P3-07 | 缺陷治理与回归测试轨道 | P2 | P1-15D | created | | |
+| P3-07 | 缺陷治理与回归测试轨道 | P2 | P1-15D | completed | | 2026-03-11 实现并验证 |
