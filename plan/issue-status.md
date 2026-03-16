@@ -146,3 +146,11 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | P3-08 | 可观测性指标扩展 | P2 | P1-13, P2-02, P3-05 | completed | | 2026-03-11 实现并验证 |
 | P3-09 | 慢请求与热点页追踪 | P2 | P3-08 | completed | | 2026-03-11 实现并验证 |
 | P3-07 | 缺陷治理与回归测试轨道 | P2 | P1-15D | completed | | 2026-03-11 实现并验证 |
+
+## Phase K：生产就绪
+
+| Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
+|---|---|---|---|---|---|---|
+| P4-01 | MountTable RocksDB 持久化 | P1 | 无 | completed | | 2026-03-16 InodeStore mounts CF + MountTable 绑定 + 4 个持久化测试通过 |
+| P4-02 | Master HA via NuRaft | P0 | P4-01 | created | | Raft 日志复制 + Leader 选举 + Follower Read |
+| P4-03 | 多 Worker 部署测试脚本 | P2 | 无 | completed | | 2026-03-16 进程内 8 测试 + shell 部署脚本 |
