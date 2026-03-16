@@ -15,6 +15,8 @@
 
 namespace fluxcache {
 
+class InodeStore;
+
 // MasterService implementation with WorkerManager and HashRingManager (P1-05C).
 class MasterServiceImpl : public proto::MasterService::Service {
  public:
@@ -68,6 +70,11 @@ class MasterServiceImpl : public proto::MasterService::Service {
   void AddPendingOrphan(InodeId inode_id);
   // Remove inodes from pending when Worker reports audit.
   void RemovePendingOrphans(const std::vector<uint64_t>& audit_inode_ids);
+
+  // Bind InodeStore for MountTable persistence. Call before Start.
+  void BindMountTableStore(InodeStore* store);
+  // Recover MountTable from RocksDB. Call after InodeTree recovery.
+  void RecoverMountTable();
 
  private:
   static ::grpc::Status ToGrpcStatus(const Status& s);

@@ -483,4 +483,12 @@ void MasterServiceImpl::CallWorkerHeartbeat(WorkerId worker_id,
   }
 }
 
+void MasterServiceImpl::BindMountTableStore(InodeStore* store) {
+  mount_table_.BindStore(store);
+}
+
+void MasterServiceImpl::RecoverMountTable() {
+  mount_table_.RecoverFromStore();
+}
+
 }  // namespace fluxcache

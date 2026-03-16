@@ -9,17 +9,27 @@
 
 namespace fluxcache {
 
+class InodeStore;
+
 // MountTable maps logical paths to UFS URIs. Resolve uses longest-prefix match
 // for nested mounts. Thread-safe.
+// When an InodeStore is bound, Mount/Unmount are persisted to RocksDB.
 class MountTable {
  public:
   MountTable() = default;
 
+  // Bind to InodeStore for persistence. Must be called before RecoverFromStore.
+  void BindStore(InodeStore* store);
+
+  // Recover mount entries from RocksDB. Call after BindStore + InodeStore::Open.
+  void RecoverFromStore();
+
   // Mount logical path to ufs_uri. Returns InvalidArgument if path already
-  // mounted.
+  // mounted. Persists to RocksDB if store is bound.
   Status Mount(const std::string& path, const std::string& ufs_uri);
 
   // Unmount the given path. Returns NotFound if path is not mounted.
+  // Persists to RocksDB if store is bound.
   Status Unmount(const std::string& path);
 
   // Resolve logical_path to (ufs_uri, ufs_path) using longest-prefix match.
@@ -35,6 +45,7 @@ class MountTable {
   static bool IsPrefixOf(const std::string& mount_path,
                          const std::string& logical_path);
 
+  InodeStore* store_ = nullptr;
   mutable std::mutex mu_;
   std::map<std::string, std::string> mounts_;
 };

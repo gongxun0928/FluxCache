@@ -31,6 +31,8 @@ bool MasterServer::Start() {
   if (!inode_tree_->InitOrRecover()) {
     return false;
   }
+  service_impl_->BindMountTableStore(inode_tree_->store());
+  service_impl_->RecoverMountTable();
   if (http_metrics_server_ && !http_metrics_server_->Start()) {
     return false;
   }

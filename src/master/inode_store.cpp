@@ -46,6 +46,7 @@ bool InodeStore::Open(const std::string& path) {
   column_families.emplace_back(rocksdb::kDefaultColumnFamilyName, rocksdb::ColumnFamilyOptions());
   column_families.emplace_back("inodes", rocksdb::ColumnFamilyOptions());
   column_families.emplace_back("edges", rocksdb::ColumnFamilyOptions());
+  column_families.emplace_back("mounts", rocksdb::ColumnFamilyOptions());
 
   std::vector<rocksdb::ColumnFamilyHandle*> handles;
   rocksdb::DB* db = nullptr;
@@ -54,11 +55,11 @@ bool InodeStore::Open(const std::string& path) {
     return false;
   }
 
-  // handles[0] = default, [1] = inodes, [2] = edges
+  // handles[0] = default, [1] = inodes, [2] = edges, [3] = mounts
   db_ = db;
   inodes_cf_ = handles[1];
   edges_cf_ = handles[2];
-  // Don't use default CF; we won't close handles[0] explicitly (DB dtor handles it)
+  mounts_cf_ = handles[3];
   delete handles[0];
 
   return true;
@@ -66,8 +67,10 @@ bool InodeStore::Open(const std::string& path) {
 
 void InodeStore::Close() {
   if (!db_) return;
+  delete mounts_cf_;
   delete edges_cf_;
   delete inodes_cf_;
+  mounts_cf_ = nullptr;
   edges_cf_ = nullptr;
   inodes_cf_ = nullptr;
   delete db_;
@@ -287,6 +290,30 @@ void InodeStore::IterateAllEdges(
       InodeId child_id = DecodeEdgeValue(it->value().ToString());
       fn(parent_id, name, child_id);
     }
+    it->Next();
+  }
+}
+
+bool InodeStore::PutMount(const std::string& path, const std::string& ufs_uri) {
+  if (!db_ || !mounts_cf_) return false;
+  rocksdb::Status s = db_->Put(rocksdb::WriteOptions(), mounts_cf_, path, ufs_uri);
+  return s.ok();
+}
+
+bool InodeStore::DeleteMount(const std::string& path) {
+  if (!db_ || !mounts_cf_) return false;
+  rocksdb::Status s = db_->Delete(rocksdb::WriteOptions(), mounts_cf_, path);
+  return s.ok();
+}
+
+void InodeStore::IterateMounts(
+    std::function<void(const std::string& path, const std::string& ufs_uri)> fn) {
+  if (!db_ || !mounts_cf_) return;
+  std::unique_ptr<rocksdb::Iterator> it(
+      db_->NewIterator(rocksdb::ReadOptions(), mounts_cf_));
+  it->SeekToFirst();
+  while (it->Valid()) {
+    fn(it->key().ToString(), it->value().ToString());
     it->Next();
   }
 }

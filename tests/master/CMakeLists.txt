@@ -25,3 +25,7 @@ add_test(NAME get_file_info_test COMMAND get_file_info_test)
 add_executable(create_complete_file_test create_complete_file_test.cpp)
 target_link_libraries(create_complete_file_test PRIVATE fluxcache_master fluxcache_proto fluxcache_ufs GTest::gtest_main)
 add_test(NAME create_complete_file_test COMMAND create_complete_file_test)
+
+add_executable(mount_table_persistence_test mount_table_persistence_test.cpp)
+target_link_libraries(mount_table_persistence_test PRIVATE fluxcache_master GTest::gtest_main)
+add_test(NAME mount_table_persistence_test COMMAND mount_table_persistence_test)

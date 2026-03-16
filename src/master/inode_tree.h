@@ -70,6 +70,9 @@ class InodeTree {
   // under prefix (e.g. /data or /data/file). Used for Unmount safety check.
   bool HasInodesUnderPath(const std::string& prefix) const;
 
+  // Expose InodeStore for MountTable persistence binding.
+  InodeStore* store() { return store_.get(); }
+
  private:
   std::string db_path_;
   std::unique_ptr<InodeStore> store_;

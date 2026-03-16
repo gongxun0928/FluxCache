@@ -75,10 +75,17 @@ class InodeStore {
   bool PutNextId(InodeId next);
   InodeId GetNextId();  // returns 1 if not found (first run)
 
+  // Mounts CF: path -> ufs_uri. For MountTable persistence.
+  bool PutMount(const std::string& path, const std::string& ufs_uri);
+  bool DeleteMount(const std::string& path);
+  void IterateMounts(std::function<void(const std::string& path,
+                                        const std::string& ufs_uri)> fn);
+
  private:
   rocksdb::DB* db_ = nullptr;
   rocksdb::ColumnFamilyHandle* inodes_cf_ = nullptr;
   rocksdb::ColumnFamilyHandle* edges_cf_ = nullptr;
+  rocksdb::ColumnFamilyHandle* mounts_cf_ = nullptr;
 
   static std::string EncodeInodeKey(InodeId id);
   static std::string EncodeEdgeKey(InodeId parent_id, const std::string& child_name);

@@ -1,5 +1,5 @@
 #include "master/mount_table.h"
-
+#include "master/inode_store.h"
 
 namespace fluxcache {
 
@@ -8,6 +8,19 @@ namespace {
 bool IsSlash(char c) { return c == '/'; }
 
 }  // namespace
+
+void MountTable::BindStore(InodeStore* store) {
+  store_ = store;
+}
+
+void MountTable::RecoverFromStore() {
+  if (!store_) return;
+  std::lock_guard<std::mutex> lock(mu_);
+  store_->IterateMounts([this](const std::string& path,
+                               const std::string& ufs_uri) {
+    mounts_[path] = ufs_uri;
+  });
+}
 
 std::string MountTable::NormalizePath(const std::string& path) {
   if (path.empty()) return "/";
@@ -67,6 +80,7 @@ Status MountTable::Mount(const std::string& path, const std::string& ufs_uri) {
     return Status::InvalidArgument("Mount: path already mounted");
   }
   mounts_[norm] = ufs_uri;
+  if (store_) store_->PutMount(norm, ufs_uri);
   return Status::OK();
 }
 
@@ -83,6 +97,7 @@ Status MountTable::Unmount(const std::string& path) {
     return Status::NotFound("Unmount: no mount point for path");
   }
   mounts_.erase(it);
+  if (store_) store_->DeleteMount(norm);
   return Status::OK();
 }
 
