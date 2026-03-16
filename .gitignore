@@ -3,7 +3,18 @@ vcpkg_installed
 vcpkg-manifest-install.log
 build-*
 build
+out
+bin
 compile_commands.json
+
+# CMake-generated executables (in-tree or stray; prefer out-of-source: build/)
+fluxcache-master
+fluxcache-worker
+fluxcache-cli
+fluxcache-fuse
+sdk_example
+**/*_test
+**/*_bench
 
 # CMake in-tree build artifacts
 CMakeCache.txt
