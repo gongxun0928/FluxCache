@@ -121,34 +121,34 @@ These are still roadmap items, not current stable core claims:
 - Protobuf + gRPC
 - RocksDB
 - yaml-cpp
+- **S3/MinIO**: vcpkg + minio-cpp (required)
 
 Optional later-stage dependencies:
 
 - FUSE3
-- **S3/MinIO**: vcpkg + minio-cpp (when `FLUXCACHE_ENABLE_S3=ON`)
 - HDFS client libraries
 - Prometheus C++ client
 
 ### Build
 
-**Default (no S3):**
+S3 UFS (minio-cpp) is required. The simplest way is to use the build script:
 
 ```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
+./build.sh
 ```
 
-**With S3/MinIO UFS (vcpkg + minio-cpp):**
+This uses the project's `vcpkg/` (or `VCPKG_ROOT` if set), bootstraps vcpkg if needed, and builds. Optional: `./build.sh [build_dir] [cmake_args...]`, e.g. `./build.sh build -DFLUXCACHE_ENABLE_FUSE=ON`.
+
+Or manually with vcpkg:
 
 ```bash
-# Install vcpkg, then:
-mkdir -p build
-cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=[path-to-vcpkg]/scripts/buildsystems/vcpkg.cmake -DFLUXCACHE_ENABLE_S3=ON
+mkdir -p build && cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[path-to-vcpkg]/scripts/buildsystems/vcpkg.cmake
 cmake --build .
+# For IDE: ln -sf "$(pwd)/compile_commands.json" ../compile_commands.json
 ```
+
+**IDE IntelliSense (clangd / C++ extension):** Run `./build.sh` once (or create the symlink above after manual cmake). This lets Cursor/VSCode resolve includes like `worker/page/page_store.h` and jump to standard library headers.
 
 ### Test
 

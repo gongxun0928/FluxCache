@@ -1,4 +1,7 @@
+vcpkg
+build-*
 build
+compile_commands.json
 
 # Prerequisites
 *.d

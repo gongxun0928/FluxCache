@@ -121,34 +121,34 @@ Under File System (LocalFS first)
 - Protobuf + gRPC
 - RocksDB
 - yaml-cpp
+- **S3/MinIO**：vcpkg + minio-cpp（必需）
 
 后续阶段的可选依赖：
 
 - FUSE3
-- **S3/MinIO**：vcpkg + minio-cpp（`FLUXCACHE_ENABLE_S3=ON` 时）
 - HDFS 客户端库
 - Prometheus C++ client
 
 ### 构建
 
-**默认（不含 S3）：**
+S3 UFS（minio-cpp）为必需。推荐使用构建脚本：
 
 ```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
+./build.sh
 ```
 
-**启用 S3/MinIO UFS（vcpkg + minio-cpp）：**
+脚本会自动使用项目内 `vcpkg/`（或环境变量 `VCPKG_ROOT`），必要时执行 bootstrap，并完成编译。可选：`./build.sh [构建目录] [cmake参数...]`，例如 `./build.sh build -DFLUXCACHE_ENABLE_FUSE=ON`。
+
+或手动使用 vcpkg：
 
 ```bash
-# 安装 vcpkg 后：
-mkdir -p build
-cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=[vcpkg路径]/scripts/buildsystems/vcpkg.cmake -DFLUXCACHE_ENABLE_S3=ON
+mkdir -p build && cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=[vcpkg路径]/scripts/buildsystems/vcpkg.cmake
 cmake --build .
+# IDE 智能提示：ln -sf "$(pwd)/compile_commands.json" ../compile_commands.json
 ```
+
+**IDE 智能提示（clangd / C++ 扩展）：** 先执行一次 `./build.sh`（或手动 cmake 后创建上述软链接）。这样 Cursor/VSCode 才能正确解析 `worker/page/page_store.h` 等 include 并跳转到标准库头文件。
 
 ### 测试
 

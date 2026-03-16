@@ -2,35 +2,36 @@
 // Uses only SDK public API for Create/Open/Read/Write/Stat/Delete.
 // Setup uses FluxCacheClient for Mount/RegisterWorker (test infrastructure).
 
+#include "client/fluxcache_client.h"
 #include "client/sdk/fluxcache_sdk.h"
 #include "client/sdk/types.h"
-#include "client/fluxcache_client.h"
 #include "common/config/config.h"
 #include "master/master_server.h"
 #include "ufs/fake_ufs.h"
 #include "ufs/ufs_factory.h"
 #include "worker/worker_server.h"
 
-#include <gtest/gtest.h>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <gtest/gtest.h>
 #include <string>
 #include <thread>
 
 namespace fluxcache {
 
 class SdkTest : public ::testing::Test {
- protected:
+protected:
   static constexpr uint16_t kMasterPort = 29620;
   static constexpr uint16_t kWorkerPort = 29621;
-  static constexpr size_t kPageSize = 1024 * 1024;  // 1MB
+  static constexpr size_t kPageSize = 1024 * 1024; // 1MB
 
   void SetUp() override {
     namespace fs = std::filesystem;
     auto base = fs::temp_directory_path() / "fluxcache_sdk_test";
-    auto unique = base / std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    auto unique =
+        base / std::to_string(
+                   std::chrono::steady_clock::now().time_since_epoch().count());
     fs::create_directories(unique);
     db_path_ = (unique / "db").string();
 
@@ -54,11 +55,13 @@ class SdkTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    if (worker_server_) worker_server_->Shutdown();
-    if (master_server_) master_server_->Shutdown();
+    if (worker_server_)
+      worker_server_->Shutdown();
+    if (master_server_)
+      master_server_->Shutdown();
     try {
-      std::filesystem::remove_all(
-          std::filesystem::temp_directory_path() / "fluxcache_sdk_test");
+      std::filesystem::remove_all(std::filesystem::temp_directory_path() /
+                                  "fluxcache_sdk_test");
     } catch (...) {
     }
   }
@@ -71,13 +74,13 @@ class SdkTest : public ::testing::Test {
     return cfg;
   }
 
-  void SetupMountAndWorker(const std::string& ufs_authority) {
+  void SetupMountAndWorker(const std::string &ufs_authority) {
     ClientConfig cfg;
     cfg.master_host = "127.0.0.1";
     cfg.master_port = kMasterPort;
     cfg.page_size = kPageSize;
     FluxCacheClient client(cfg);
-    auto* master = client.GetMasterClient();
+    auto *master = client.GetMasterClient();
     ASSERT_TRUE(master->Mount("/mnt", "fake://" + ufs_authority).ok());
     ASSERT_TRUE(master->RegisterWorker("127.0.0.1", kWorkerPort).ok());
   }
@@ -154,7 +157,7 @@ TEST_F(SdkTest, StatReturnsCorrectMetadata) {
 
   auto stat_result = sdk->Stat(path);
   ASSERT_TRUE(stat_result.ok()) << stat_result.status().message();
-  const auto& fi = stat_result.value();
+  const auto &fi = stat_result.value();
   EXPECT_GT(fi.inode_id, 0u);
   EXPECT_EQ(fi.size, 0u);
   EXPECT_FALSE(fi.is_directory);
@@ -195,7 +198,7 @@ TEST_F(SdkTest, CreateAlreadyExistsReturnsAlreadyExists) {
   EXPECT_EQ(create_status.code(), StatusCode::kAlreadyExists);
 }
 
-TEST_F(SdkTest, DeleteReturnsErrorWhenServerNotImplemented) {
+TEST_F(SdkTest, DeleteSucceedsAndFileIsGone) {
   auto fake = std::make_unique<FakeUfs>();
   fake->AddFile("placeholder", 0, 0);
   RegisterFakeUfsForTest("sdk-delete", std::move(fake));
@@ -210,10 +213,12 @@ TEST_F(SdkTest, DeleteReturnsErrorWhenServerNotImplemented) {
   ASSERT_TRUE(sdk->Create(path).ok());
 
   auto delete_status = sdk->Delete(path);
-  // Server returns UNIMPLEMENTED, we map to Unavailable
-  EXPECT_FALSE(delete_status.ok());
-  EXPECT_TRUE(delete_status.code() == StatusCode::kUnavailable ||
-              delete_status.code() == StatusCode::kIOError);
+  EXPECT_TRUE(delete_status.ok()) << delete_status.message();
+
+  // File should be gone: Open returns NotFound
+  auto open_result = sdk->Open(path, OpenMode::kReadOnly);
+  EXPECT_FALSE(open_result.ok());
+  EXPECT_EQ(open_result.status().code(), StatusCode::kNotFound);
 }
 
 TEST_F(SdkTest, InvalidConfigReturnsError) {
@@ -309,4 +314,4 @@ TEST_F(SdkTest, LocalCacheDisabledReadsWork) {
   handle->Close();
 }
 
-}  // namespace fluxcache
+} // namespace fluxcache

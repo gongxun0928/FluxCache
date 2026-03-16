@@ -1,15 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-# FLUXCACHE_ENABLE_S3: when ON, requires vcpkg + minio-cpp. Set before project() for vcpkg manifest.
-if(NOT DEFINED FLUXCACHE_ENABLE_S3)
-  set(FLUXCACHE_ENABLE_S3 OFF CACHE BOOL "Build S3 UFS backend (requires vcpkg + minio-cpp)")
-endif()
-if(FLUXCACHE_ENABLE_S3 AND DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
-  set(VCPKG_MANIFEST_FEATURES "s3" CACHE STRING "vcpkg manifest features" FORCE)
-  message(STATUS "vcpkg: enabling s3 feature for minio-cpp")
-endif()
-
+# S3 UFS (minio-cpp) is required. Use vcpkg: cmake -DCMAKE_TOOLCHAIN_FILE=[vcpkg]/scripts/buildsystems/vcpkg.cmake ..
 project(FluxCache LANGUAGES CXX)
+
+# For clangd / C++ IntelliSense: generate compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 enable_testing()
 
@@ -86,17 +81,9 @@ if(FLUXCACHE_ENABLE_TSAN)
   message(STATUS "ThreadSanitizer enabled")
 endif()
 
-# S3 UFS (P2-07A): requires vcpkg + minio-cpp when FLUXCACHE_ENABLE_S3=ON
-set(FLUXCACHE_HAS_S3 OFF)
-if(FLUXCACHE_ENABLE_S3)
-  find_package(minio-cpp CONFIG QUIET)
-  if(minio-cpp_FOUND)
-    set(FLUXCACHE_HAS_S3 ON)
-    message(STATUS "S3 UFS: minio-cpp found")
-  else()
-    message(WARNING "FLUXCACHE_ENABLE_S3=ON but minio-cpp not found. Use vcpkg: cmake -DCMAKE_TOOLCHAIN_FILE=[vcpkg]/scripts/buildsystems/vcpkg.cmake -DFLUXCACHE_ENABLE_S3=ON ..")
-  endif()
-endif()
+# S3 UFS (P2-07A): required. vcpkg exposes minio-cpp as miniocpp::miniocpp
+find_package(miniocpp CONFIG REQUIRED)
+message(STATUS "S3 UFS: minio-cpp (miniocpp) found")
 
 add_subdirectory(src)
 add_subdirectory(examples)
