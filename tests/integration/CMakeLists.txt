@@ -37,3 +37,11 @@ target_link_libraries(degradation_fault_injection_test PRIVATE fluxcache_client
                                               fluxcache_master fluxcache_worker
                                               fluxcache_ufs GTest::gtest_main)
 add_test(NAME degradation_fault_injection_test COMMAND degradation_fault_injection_test)
+
+add_executable(multi_worker_test multi_worker_test.cpp)
+target_include_directories(multi_worker_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(multi_worker_test PRIVATE fluxcache_client fluxcache_common
+                                        fluxcache_proto fluxcache_master
+                                        fluxcache_worker fluxcache_ufs
+                                        GTest::gtest_main)
+add_test(NAME multi_worker_test COMMAND multi_worker_test)
