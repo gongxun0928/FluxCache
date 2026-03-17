@@ -1,6 +1,5 @@
 #include "client/cached_hash_ring.h"
 #include "master.pb.h"
-#include <algorithm>
 #include <sstream>
 
 namespace fluxcache {
@@ -24,6 +23,9 @@ uint64_t CachedHashRing::GetHash(const std::string& key) const {
 
 void CachedHashRing::Update(const proto::GetHashRingResponse& resp) {
   std::unique_lock lock(mu_);
+  if (resp.ring_version() < ring_version_) {
+    return;
+  }
   ring_.clear();
   worker_to_address_.clear();
   ring_version_ = resp.ring_version();

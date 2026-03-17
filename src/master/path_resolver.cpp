@@ -1,7 +1,6 @@
 #include "master/path_resolver.h"
 #include "ufs/ufs_factory.h"
 
-#include <chrono>
 #include <sstream>
 
 namespace fluxcache {
@@ -171,6 +170,12 @@ std::optional<InodeId> PathResolver::ResolveOrSync(const std::string& logical_pa
   Status s = SyncFromUfs(logical_path);
   if (!s.ok()) return std::nullopt;
 
+  return tree_->LookupPath(logical_path);
+}
+
+std::optional<InodeId> PathResolver::ResolveLocal(
+    const std::string& logical_path) const {
+  if (!tree_) return std::nullopt;
   return tree_->LookupPath(logical_path);
 }
 

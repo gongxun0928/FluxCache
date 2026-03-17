@@ -127,6 +127,29 @@ TEST(ClientTest, CachedHashRingRefreshOverwrites) {
   EXPECT_EQ(ring.GetWorkerAddress(2), "b:2");
 }
 
+TEST(ClientTest, CachedHashRingRejectsOlderVersionRollback) {
+  CachedHashRing ring;
+  proto::GetHashRingResponse newer;
+  newer.set_ring_version(5);
+  auto* newer_ep = newer.add_workers();
+  newer_ep->set_worker_id(9);
+  newer_ep->set_host("new");
+  newer_ep->set_port(9);
+  ring.Update(newer);
+
+  proto::GetHashRingResponse older;
+  older.set_ring_version(4);
+  auto* older_ep = older.add_workers();
+  older_ep->set_worker_id(1);
+  older_ep->set_host("old");
+  older_ep->set_port(1);
+  ring.Update(older);
+
+  EXPECT_EQ(ring.GetVersion(), 5u);
+  EXPECT_EQ(ring.GetWorkerAddress(9), "new:9");
+  EXPECT_EQ(ring.GetWorkerAddress(1), "");
+}
+
 // -----------------------------------------------------------------------------
 // FluxCacheClient: GetWorkerForBlock, GetWorkerClient, error codes
 // -----------------------------------------------------------------------------

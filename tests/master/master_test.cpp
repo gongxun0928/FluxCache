@@ -1,5 +1,6 @@
 #include "master/master_service_impl.h"
 #include "master.pb.h"
+#include <chrono>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 
@@ -214,6 +215,46 @@ TEST(MasterServiceTest, RegisterWorkerIdempotentNotFound) {
 
   ASSERT_FALSE(status.ok());
   EXPECT_EQ(status.error_code(), ::grpc::StatusCode::NOT_FOUND);
+}
+
+TEST(MasterServiceTest, RestoredExpiredWorkerEntersSuspectGraceWindowOnHealthSweep) {
+  MasterServiceImpl impl;
+  impl.SetWorkerHealthPolicy(100, 500);
+
+  const int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+
+  proto::WorkerTopologySnapshot snapshot;
+  snapshot.set_next_worker_id(2);
+  snapshot.set_ring_version(1);
+  auto* worker = snapshot.add_workers();
+  worker->set_worker_id(1);
+  worker->set_host("127.0.0.1");
+  worker->set_port(9091);
+  worker->set_state(static_cast<uint32_t>(WorkerState::kAlive));
+  worker->set_last_heartbeat_ms(now_ms - 1000);
+  worker->set_suspect_since_ms(0);
+
+  ASSERT_TRUE(impl.RestoreWorkerTopologySnapshot(snapshot));
+
+  auto info = impl.worker_manager_ptr()->GetWorker(1);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->state, WorkerState::kAlive);
+  EXPECT_EQ(info->suspect_since_ms, 0);
+
+  impl.CheckWorkerHealthAndUpdateRing(now_ms, 100, 500);
+  info = impl.worker_manager_ptr()->GetWorker(1);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->state, WorkerState::kSuspect);
+  EXPECT_GE(info->suspect_since_ms, now_ms);
+
+  ::grpc::ServerContext ctx;
+  proto::GetHashRingRequest req;
+  proto::GetHashRingResponse resp;
+  ASSERT_TRUE(impl.GetHashRing(&ctx, &req, &resp).ok());
+  ASSERT_EQ(resp.workers_size(), 1);
+  EXPECT_EQ(resp.workers(0).worker_id(), 1u);
 }
 
 }  // namespace fluxcache

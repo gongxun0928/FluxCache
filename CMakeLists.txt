@@ -85,6 +85,42 @@ endif()
 find_package(miniocpp CONFIG REQUIRED)
 message(STATUS "S3 UFS: minio-cpp (miniocpp) found")
 
+# NuRaft for Master HA (P4-02)
+option(FLUXCACHE_ENABLE_RAFT "Build with NuRaft for Master HA" ON)
+if(FLUXCACHE_ENABLE_RAFT)
+  include(FetchContent)
+
+  # Standalone ASIO (header-only, required by NuRaft)
+  FetchContent_Declare(
+    asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG asio-1-30-2
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_Populate(asio)
+  set(ASIO_INCLUDE_DIR "${asio_SOURCE_DIR}/asio/include" CACHE PATH "" FORCE)
+
+  # NuRaft
+  set(DISABLE_SSL 1 CACHE INTERNAL "" FORCE)
+  set(BUILD_TESTING_SAVED ${BUILD_TESTING})
+  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    nuraft
+    GIT_REPOSITORY https://github.com/eBay/NuRaft.git
+    GIT_TAG v3.0.0
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_MakeAvailable(nuraft)
+  set(BUILD_TESTING ${BUILD_TESTING_SAVED} CACHE BOOL "" FORCE)
+
+  set(FLUXCACHE_NURAFT_TARGET "static_lib")
+  set(FLUXCACHE_NURAFT_EXAMPLES_DIR "${nuraft_SOURCE_DIR}/examples")
+  message(STATUS "NuRaft: enabled (v3.0.0 via FetchContent)")
+else()
+  message(STATUS "NuRaft: disabled")
+endif()
+
 add_subdirectory(src)
 add_subdirectory(examples)
 add_subdirectory(tests)

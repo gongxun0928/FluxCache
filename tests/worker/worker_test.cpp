@@ -1,3 +1,4 @@
+#include "worker/registration_util.h"
 #include "worker/worker_service_impl.h"
 #include "worker/worker_server.h"
 #include "worker/page/page_store.h"
@@ -10,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <thread>
 
 namespace fluxcache {
 
@@ -108,6 +108,17 @@ fluxcache:
   EXPECT_EQ(cfg.worker.host, "0.0.0.0");
   EXPECT_EQ(cfg.worker.port, 9091);
   EXPECT_EQ(cfg.worker.heartbeat_interval_ms, 3000u);
+}
+
+TEST(WorkerRegistrationUtilTest, ExtractLeaderAddressParsesHint) {
+  auto leader = ExtractLeaderAddress("not leader; leader=127.0.0.1:19001");
+  ASSERT_TRUE(leader.has_value());
+  EXPECT_EQ(*leader, "127.0.0.1:19001");
+}
+
+TEST(WorkerRegistrationUtilTest, ExtractLeaderAddressReturnsNulloptWithoutHint) {
+  auto leader = ExtractLeaderAddress("temporary unavailable");
+  EXPECT_FALSE(leader.has_value());
 }
 
 }  // namespace fluxcache

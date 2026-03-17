@@ -19,6 +19,13 @@ struct WorkerInfo {
   int64_t suspect_since_ms = 0;  // When entered SUSPECT (for grace period)
 };
 
+struct WorkerStateTransition {
+  WorkerId worker_id = 0;
+  WorkerState state = WorkerState::kAlive;
+  int64_t last_heartbeat_ms = 0;
+  int64_t suspect_since_ms = 0;
+};
+
 // Manages Worker registration, heartbeat, and ALIVE/SUSPECT/DEAD state machine.
 // Timeout parameters are injectable for testability.
 class WorkerManager {
@@ -39,11 +46,23 @@ class WorkerManager {
   std::vector<WorkerId> CheckWorkerHealth(int64_t now_ms,
                                           int64_t heartbeat_timeout_ms,
                                           int64_t suspect_grace_ms);
+  std::vector<WorkerStateTransition> CollectHealthTransitions(
+      int64_t now_ms, int64_t heartbeat_timeout_ms,
+      int64_t suspect_grace_ms) const;
 
   // Get worker info if exists.
   std::optional<WorkerInfo> GetWorker(WorkerId worker_id) const;
 
   WorkerState GetWorkerState(WorkerId worker_id) const;
+
+  // Deterministic apply helpers for replicated topology state.
+  void ApplyWorkerRegistration(WorkerId worker_id, const std::string& host,
+                               uint16_t port, int64_t last_heartbeat_ms);
+  bool ApplyWorkerState(WorkerId worker_id, WorkerState state,
+                        int64_t last_heartbeat_ms,
+                        int64_t suspect_since_ms);
+  std::vector<WorkerInfo> GetAllWorkers() const;
+  void ReplaceAllWorkers(const std::vector<WorkerInfo>& workers);
 
   // Returns all workers that are in the ring (ALIVE + SUSPECT, not DEAD).
   std::vector<WorkerInfo> GetAllWorkersInRing() const;

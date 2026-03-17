@@ -1,5 +1,6 @@
 #include "common/config/config.h"
 #include "master.grpc.pb.h"
+#include "worker/registration_util.h"
 #include "worker/worker_server.h"
 #include <atomic>
 #include <chrono>
@@ -43,9 +44,6 @@ void HeartbeatLoop(const fluxcache::FluxCacheConfig& cfg,
                    std::atomic<uint64_t>& worker_id) {
   std::string master_addr =
       cfg.master.host + ":" + std::to_string(cfg.master.port);
-  auto channel =
-      grpc::CreateChannel(master_addr, grpc::InsecureChannelCredentials());
-  auto stub = fluxcache::proto::MasterService::NewStub(channel);
 
   std::string ep_host = AdvertiseHost(cfg.worker.host);
   uint32_t ep_port = cfg.worker.port;
@@ -55,6 +53,10 @@ void HeartbeatLoop(const fluxcache::FluxCacheConfig& cfg,
   }
 
   while (!g_shutdown_requested.load(std::memory_order_relaxed)) {
+    auto channel =
+        grpc::CreateChannel(master_addr, grpc::InsecureChannelCredentials());
+    auto stub = fluxcache::proto::MasterService::NewStub(channel);
+
     fluxcache::proto::RegisterWorkerRequest req;
     auto* ep = req.mutable_endpoint();
     ep->set_host(ep_host);
@@ -77,8 +79,11 @@ void HeartbeatLoop(const fluxcache::FluxCacheConfig& cfg,
       if (status.error_code() == grpc::StatusCode::NOT_FOUND) {
         worker_id.store(0, std::memory_order_relaxed);
       }
+      if (auto leader_addr = fluxcache::ExtractLeaderAddress(status.error_message())) {
+        master_addr = *leader_addr;
+      }
       std::cerr << "[heartbeat] Master unreachable: " << status.error_message()
-                << " (will retry)" << std::endl;
+                << " (will retry via " << master_addr << ")" << std::endl;
     }
 
     for (uint32_t i = 0; i < interval_ms && !g_shutdown_requested.load(std::memory_order_relaxed);

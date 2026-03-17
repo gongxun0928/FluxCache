@@ -10,6 +10,8 @@
 
 namespace fluxcache {
 
+struct WorkerInfo;
+
 // Endpoint info for GetRingSnapshot (host, port).
 struct WorkerEndpointInfo {
   WorkerId worker_id = 0;
@@ -54,7 +56,10 @@ class HashRingManager {
   };
   RingSnapshot GetRingSnapshot(EndpointLookup endpoint_lookup) const;
 
-  uint64_t GetVersion() const { return ring_version_; }
+  uint64_t GetVersion() const;
+  bool ContainsWorker(WorkerId worker_id) const;
+  void RestoreFromWorkers(const std::vector<WorkerInfo>& workers,
+                          uint64_t ring_version);
 
  private:
   uint64_t GetHash(const std::string& key) const;

@@ -1,13 +1,12 @@
 #pragma once
 
-#include "common/config/config.h"
 #include "common/rpc/channel_pool.h"
 #include "common/rpc/circuit_breaker.h"
 #include "common/rpc/resilience_config.h"
 #include "common/rpc/retry_policy.h"
 #include "common/status.h"
 #include "master.pb.h"
-#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -63,7 +62,11 @@ class MasterClient {
   StatusOr<uint64_t> RegisterWorker(const std::string& host, uint16_t port);
 
  private:
+  std::string GetMasterAddress() const;
+  bool TryFollowLeaderHint(const grpc::Status& status);
+
   ChannelPool* pool_;
+  mutable std::mutex master_address_mu_;
   std::string master_address_;
   ResilienceConfig resilience_config_;
   RetryPolicy retry_policy_;

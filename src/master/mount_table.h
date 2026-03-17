@@ -40,6 +40,11 @@ class MountTable {
   // List all mount paths in lexicographic order.
   std::vector<std::string> ListMounts() const;
 
+  // Deterministic apply methods called by RaftStateMachine::commit().
+  // These update both in-memory state and RocksDB (via store_).
+  Status ApplyMount(const std::string& path, const std::string& ufs_uri);
+  Status ApplyUnmount(const std::string& path);
+
  private:
   static std::string NormalizePath(const std::string& path);
   static bool IsPrefixOf(const std::string& mount_path,

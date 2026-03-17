@@ -3,9 +3,6 @@
 #include "common/status.h"
 #include "master/inode_tree.h"
 #include "master/mount_table.h"
-#include "ufs/ufs.h"
-
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,6 +21,9 @@ class PathResolver {
   // Resolves path, syncs if needed, and returns inode_id. Returns nullopt if
   // path does not exist in UFS or sync fails.
   std::optional<InodeId> ResolveOrSync(const std::string& logical_path);
+
+  // Resolves from local metadata only and never mutates InodeTree.
+  std::optional<InodeId> ResolveLocal(const std::string& logical_path) const;
 
   // Lists directory at path after syncing from UFS. Returns (name, inode_id).
   std::vector<std::pair<std::string, InodeId>> ListDirectory(

@@ -81,11 +81,25 @@ class InodeStore {
   void IterateMounts(std::function<void(const std::string& path,
                                         const std::string& ufs_uri)> fn);
 
+  // Batched metadata updates for atomic apply paths.
+  bool BatchCreateInode(InodeId id, const InodeEntry& entry, InodeId parent_id,
+                        const std::string& child_name, InodeId child_id,
+                        std::optional<InodeId> next_id = std::nullopt);
+  bool BatchDeleteInode(InodeId id, InodeId parent_id,
+                        const std::string& child_name);
+
+  // Create a RocksDB checkpoint at the given path.
+  bool CreateCheckpoint(const std::string& path);
+
+  // Test-only failpoint for write operations.
+  void FailNextWriteForTest(uint32_t count = 1);
+
  private:
   rocksdb::DB* db_ = nullptr;
   rocksdb::ColumnFamilyHandle* inodes_cf_ = nullptr;
   rocksdb::ColumnFamilyHandle* edges_cf_ = nullptr;
   rocksdb::ColumnFamilyHandle* mounts_cf_ = nullptr;
+  uint32_t fail_next_write_count_ = 0;
 
   static std::string EncodeInodeKey(InodeId id);
   static std::string EncodeEdgeKey(InodeId parent_id, const std::string& child_name);
@@ -93,6 +107,7 @@ class InodeStore {
   static std::optional<InodeEntry> DecodeInodeValue(const std::string& value);
   static std::string EncodeEdgeValue(InodeId child_id);
   static InodeId DecodeEdgeValue(const std::string& value);
+  bool MaybeFailWriteForTest();
 };
 
 }  // namespace fluxcache

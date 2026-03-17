@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/status.h"
 #include "master/inode_store.h"
 #include "common/types.h"
 #include <memory>
@@ -72,6 +73,33 @@ class InodeTree {
 
   // Expose InodeStore for MountTable persistence binding.
   InodeStore* store() { return store_.get(); }
+
+  // Pre-allocate an InodeId for Raft log entries (leader side only).
+  // Returns the allocated id and the updated next_id counter.
+  struct AllocResult { InodeId id; InodeId next_id; };
+  AllocResult AllocateInodeId();
+
+  // Deterministic apply methods called by RaftStateMachine::commit().
+  // These use pre-allocated IDs from the Raft log entry for determinism.
+  Status ApplyCreateFile(InodeId id, const std::string& path, InodeId parent_id,
+                         uint64_t size, uint64_t block_size,
+                         int64_t creation_time_ms, int64_t mtime_ms,
+                         InodeId next_id);
+  Status ApplyCreateDirectory(InodeId id, const std::string& path,
+                              InodeId parent_id, int64_t creation_time_ms,
+                              int64_t modification_time_ms, InodeId next_id);
+  Status ApplyDeleteInode(InodeId id);
+  Status ApplyUpdateSizeAndMtime(InodeId id, uint64_t size, int64_t mtime_ms);
+
+  // Resolve path components to find parent_id for a given path.
+  // Used by leader before creating Raft log entries.
+  std::optional<InodeId> FindParentId(const std::string& path) const;
+
+  // Create a consistent RocksDB checkpoint of current metadata state.
+  bool CreateCheckpoint(const std::string& path);
+
+  // Replace current metadata DB contents with a checkpoint and recover memory state.
+  bool RestoreFromCheckpoint(const std::string& checkpoint_path);
 
  private:
   std::string db_path_;

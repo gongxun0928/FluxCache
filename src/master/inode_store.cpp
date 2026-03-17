@@ -1,8 +1,10 @@
 #include "master/inode_store.h"
 #include <cstring>
 #include <rocksdb/options.h>
+#include <rocksdb/write_batch.h>
 #include <rocksdb/slice.h>
 #include <rocksdb/status.h>
+#include <rocksdb/utilities/checkpoint.h>
 
 namespace fluxcache {
 
@@ -174,6 +176,7 @@ InodeId InodeStore::DecodeEdgeValue(const std::string& value) {
 
 bool InodeStore::PutInode(InodeId id, const InodeEntry& entry) {
   if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
   std::string key = EncodeInodeKey(id);
   std::string value = EncodeInodeValue(entry);
   rocksdb::Status s = db_->Put(rocksdb::WriteOptions(), inodes_cf_, key, value);
@@ -191,6 +194,7 @@ std::optional<InodeEntry> InodeStore::GetInode(InodeId id) {
 
 bool InodeStore::DeleteInode(InodeId id) {
   if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
   std::string key = EncodeInodeKey(id);
   rocksdb::Status s = db_->Delete(rocksdb::WriteOptions(), inodes_cf_, key);
   return s.ok();
@@ -198,6 +202,7 @@ bool InodeStore::DeleteInode(InodeId id) {
 
 bool InodeStore::PutEdge(InodeId parent_id, const std::string& child_name, InodeId child_id) {
   if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
   std::string key = EncodeEdgeKey(parent_id, child_name);
   std::string value = EncodeEdgeValue(child_id);
   rocksdb::Status s = db_->Put(rocksdb::WriteOptions(), edges_cf_, key, value);
@@ -215,6 +220,7 @@ std::optional<InodeId> InodeStore::GetEdge(InodeId parent_id, const std::string&
 
 bool InodeStore::DeleteEdge(InodeId parent_id, const std::string& child_name) {
   if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
   std::string key = EncodeEdgeKey(parent_id, child_name);
   rocksdb::Status s = db_->Delete(rocksdb::WriteOptions(), edges_cf_, key);
   return s.ok();
@@ -243,6 +249,7 @@ std::vector<std::pair<std::string, InodeId>> InodeStore::GetEdges(InodeId parent
 
 bool InodeStore::PutNextId(InodeId next) {
   if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
   rocksdb::Status s =
       db_->Put(rocksdb::WriteOptions(), inodes_cf_, kNextIdKey, EncodeEdgeValue(next));
   return s.ok();
@@ -296,14 +303,43 @@ void InodeStore::IterateAllEdges(
 
 bool InodeStore::PutMount(const std::string& path, const std::string& ufs_uri) {
   if (!db_ || !mounts_cf_) return false;
+  if (MaybeFailWriteForTest()) return false;
   rocksdb::Status s = db_->Put(rocksdb::WriteOptions(), mounts_cf_, path, ufs_uri);
   return s.ok();
 }
 
 bool InodeStore::DeleteMount(const std::string& path) {
   if (!db_ || !mounts_cf_) return false;
+  if (MaybeFailWriteForTest()) return false;
   rocksdb::Status s = db_->Delete(rocksdb::WriteOptions(), mounts_cf_, path);
   return s.ok();
+}
+
+bool InodeStore::BatchCreateInode(InodeId id, const InodeEntry& entry,
+                                  InodeId parent_id,
+                                  const std::string& child_name,
+                                  InodeId child_id,
+                                  std::optional<InodeId> next_id) {
+  if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
+  rocksdb::WriteBatch batch;
+  batch.Put(inodes_cf_, EncodeInodeKey(id), EncodeInodeValue(entry));
+  batch.Put(edges_cf_, EncodeEdgeKey(parent_id, child_name),
+            EncodeEdgeValue(child_id));
+  if (next_id.has_value()) {
+    batch.Put(inodes_cf_, kNextIdKey, EncodeEdgeValue(*next_id));
+  }
+  return db_->Write(rocksdb::WriteOptions(), &batch).ok();
+}
+
+bool InodeStore::BatchDeleteInode(InodeId id, InodeId parent_id,
+                                  const std::string& child_name) {
+  if (!db_) return false;
+  if (MaybeFailWriteForTest()) return false;
+  rocksdb::WriteBatch batch;
+  batch.Delete(edges_cf_, EncodeEdgeKey(parent_id, child_name));
+  batch.Delete(inodes_cf_, EncodeInodeKey(id));
+  return db_->Write(rocksdb::WriteOptions(), &batch).ok();
 }
 
 void InodeStore::IterateMounts(
@@ -316,6 +352,26 @@ void InodeStore::IterateMounts(
     fn(it->key().ToString(), it->value().ToString());
     it->Next();
   }
+}
+
+bool InodeStore::CreateCheckpoint(const std::string& path) {
+  if (!db_) return false;
+  rocksdb::Checkpoint* checkpoint = nullptr;
+  auto s = rocksdb::Checkpoint::Create(db_, &checkpoint);
+  if (!s.ok() || !checkpoint) return false;
+  std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
+  s = checkpoint->CreateCheckpoint(path);
+  return s.ok();
+}
+
+void InodeStore::FailNextWriteForTest(uint32_t count) {
+  fail_next_write_count_ = count;
+}
+
+bool InodeStore::MaybeFailWriteForTest() {
+  if (fail_next_write_count_ == 0) return false;
+  --fail_next_write_count_;
+  return fail_next_write_count_ == 0;
 }
 
 }  // namespace fluxcache

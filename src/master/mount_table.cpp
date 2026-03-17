@@ -16,6 +16,7 @@ void MountTable::BindStore(InodeStore* store) {
 void MountTable::RecoverFromStore() {
   if (!store_) return;
   std::lock_guard<std::mutex> lock(mu_);
+  mounts_.clear();
   store_->IterateMounts([this](const std::string& path,
                                const std::string& ufs_uri) {
     mounts_[path] = ufs_uri;
@@ -79,8 +80,10 @@ Status MountTable::Mount(const std::string& path, const std::string& ufs_uri) {
   if (it != mounts_.end()) {
     return Status::InvalidArgument("Mount: path already mounted");
   }
+  if (store_ && !store_->PutMount(norm, ufs_uri)) {
+    return Status::IOError("Mount: failed to persist mount");
+  }
   mounts_[norm] = ufs_uri;
-  if (store_) store_->PutMount(norm, ufs_uri);
   return Status::OK();
 }
 
@@ -96,8 +99,10 @@ Status MountTable::Unmount(const std::string& path) {
   if (it == mounts_.end()) {
     return Status::NotFound("Unmount: no mount point for path");
   }
+  if (store_ && !store_->DeleteMount(norm)) {
+    return Status::IOError("Unmount: failed to persist unmount");
+  }
   mounts_.erase(it);
-  if (store_) store_->DeleteMount(norm);
   return Status::OK();
 }
 
@@ -139,6 +144,43 @@ std::vector<std::string> MountTable::ListMounts() const {
     result.push_back(p.first);
   }
   return result;
+}
+
+Status MountTable::ApplyMount(const std::string& path,
+                              const std::string& ufs_uri) {
+  if (path.empty()) {
+    return Status::InvalidArgument("Mount: path is required");
+  }
+  if (ufs_uri.empty()) {
+    return Status::InvalidArgument("Mount: ufs_uri is required");
+  }
+  std::string norm = NormalizePath(path);
+  std::lock_guard<std::mutex> lock(mu_);
+  if (mounts_.find(norm) != mounts_.end()) {
+    return Status::InvalidArgument("Mount: path already mounted");
+  }
+  if (store_ && !store_->PutMount(norm, ufs_uri)) {
+    return Status::IOError("Mount: failed to persist mount");
+  }
+  mounts_[norm] = ufs_uri;
+  return Status::OK();
+}
+
+Status MountTable::ApplyUnmount(const std::string& path) {
+  if (path.empty()) {
+    return Status::InvalidArgument("Unmount: path is required");
+  }
+  std::string norm = NormalizePath(path);
+  std::lock_guard<std::mutex> lock(mu_);
+  auto it = mounts_.find(norm);
+  if (it == mounts_.end()) {
+    return Status::NotFound("Unmount: no mount point for path");
+  }
+  if (store_ && !store_->DeleteMount(norm)) {
+    return Status::IOError("Unmount: failed to persist unmount");
+  }
+  mounts_.erase(it);
+  return Status::OK();
 }
 
 }  // namespace fluxcache

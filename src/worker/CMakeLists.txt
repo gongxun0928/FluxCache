@@ -1,4 +1,5 @@
 add_library(fluxcache_worker STATIC
+  registration_util.cpp
   worker_server.cpp
   worker_service_impl.cpp
   meta/page_meta.cpp

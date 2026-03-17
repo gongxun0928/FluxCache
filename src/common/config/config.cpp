@@ -164,6 +164,47 @@ StatusOr<FluxCacheConfig> LoadConfig(const std::string& path) {
   OptionalString(master["db_path"], "./fluxcache_meta", &cfg.master.db_path);
   OptionalUint16(master["metrics_port"], 0, &cfg.master.metrics_port);
 
+  // master.raft (optional)
+  YAML::Node raft = master["raft"];
+  if (raft && raft.IsMap()) {
+    OptionalBool(raft["enabled"], false, &cfg.master.raft.enabled);
+    OptionalInt(raft["server_id"], 1, &cfg.master.raft.server_id);
+    OptionalUint16(raft["raft_port"], 9001, &cfg.master.raft.raft_port);
+    OptionalString(raft["snapshot_path"],
+                   cfg.master.db_path + "_snapshots",
+                   &cfg.master.raft.snapshot_path);
+    OptionalInt(raft["snapshot_distance"], 10000,
+                &cfg.master.raft.snapshot_distance);
+    OptionalInt(raft["heartbeat_interval_ms"], 100,
+                &cfg.master.raft.heartbeat_interval_ms);
+    OptionalInt(raft["election_timeout_lower_ms"], 200,
+                &cfg.master.raft.election_timeout_lower_ms);
+    OptionalInt(raft["election_timeout_upper_ms"], 400,
+                &cfg.master.raft.election_timeout_upper_ms);
+    OptionalInt(raft["reserved_log_items"], 5000,
+                &cfg.master.raft.reserved_log_items);
+    YAML::Node peers = raft["peers"];
+    if (peers && peers.IsSequence()) {
+      for (size_t i = 0; i < peers.size(); ++i) {
+        YAML::Node p = peers[i];
+        if (!p.IsMap()) continue;
+        RaftPeerConfigEntry entry;
+        if (p["id"] && p["id"].IsDefined()) {
+          try { entry.id = p["id"].as<int>(); } catch (...) {}
+        }
+        if (p["endpoint"] && p["endpoint"].IsDefined()) {
+          try { entry.endpoint = p["endpoint"].as<std::string>(); } catch (...) {}
+        }
+        if (entry.id > 0 && !entry.endpoint.empty()) {
+          cfg.master.raft.peers.push_back(entry);
+        }
+      }
+    }
+  }
+  if (cfg.master.raft.snapshot_path.empty()) {
+    cfg.master.raft.snapshot_path = cfg.master.db_path + "_snapshots";
+  }
+
   // worker
   YAML::Node worker = fluxcache["worker"];
   if (!worker || !worker.IsMap()) {

@@ -1,4 +1,5 @@
 #include "master/hash_ring_manager.h"
+#include "master/worker_manager.h"
 #include <algorithm>
 #include <set>
 #include <sstream>
@@ -55,6 +56,16 @@ void HashRingManager::RemoveWorker(WorkerId worker_id) {
   }
   worker_to_hashes_.erase(it);
   ++ring_version_;
+}
+
+bool HashRingManager::ContainsWorker(WorkerId worker_id) const {
+  std::shared_lock lock(mu_);
+  return worker_to_hashes_.count(worker_id) > 0;
+}
+
+uint64_t HashRingManager::GetVersion() const {
+  std::shared_lock lock(mu_);
+  return ring_version_;
 }
 
 WorkerId HashRingManager::GetWorker(BlockId block_id, bool skip_suspect) const {
@@ -165,6 +176,25 @@ HashRingManager::RingSnapshot HashRingManager::GetRingSnapshot(
               return a.worker_id < b.worker_id;
             });
   return snap;
+}
+
+void HashRingManager::RestoreFromWorkers(const std::vector<WorkerInfo>& workers,
+                                         uint64_t ring_version) {
+  std::unique_lock lock(mu_);
+  ring_.clear();
+  worker_to_hashes_.clear();
+  for (const auto& info : workers) {
+    if (info.state == WorkerState::kDead) continue;
+    auto& hashes = worker_to_hashes_[info.worker_id];
+    for (int i = 0; i < kDefaultVirtualNodes; ++i) {
+      std::ostringstream oss;
+      oss << info.worker_id << "#" << i;
+      uint64_t h = GetHash(oss.str());
+      ring_[h] = info.worker_id;
+      hashes.push_back(h);
+    }
+  }
+  ring_version_ = ring_version;
 }
 
 }  // namespace fluxcache

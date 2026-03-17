@@ -69,6 +69,23 @@ TEST(WorkerManagerTest, HeartbeatRecoversFromSuspect) {
   EXPECT_EQ(wm.GetWorkerState(1), WorkerState::kAlive);
 }
 
+TEST(WorkerManagerTest, CollectHealthTransitionsDoesNotMutateState) {
+  WorkerManager wm;
+  wm.RegisterWorker(1, "127.0.0.1", 9091, 1000);
+
+  auto transitions = wm.CollectHealthTransitions(1101, 100, 50);
+  ASSERT_EQ(transitions.size(), 1u);
+  EXPECT_EQ(transitions[0].worker_id, 1u);
+  EXPECT_EQ(transitions[0].state, WorkerState::kSuspect);
+  EXPECT_EQ(transitions[0].last_heartbeat_ms, 1000);
+  EXPECT_EQ(transitions[0].suspect_since_ms, 1101);
+
+  auto info = wm.GetWorker(1);
+  ASSERT_TRUE(info.has_value());
+  EXPECT_EQ(info->state, WorkerState::kAlive);
+  EXPECT_EQ(info->suspect_since_ms, 0);
+}
+
 TEST(WorkerManagerTest, GetAllWorkersInRingExcludesDead) {
   WorkerManager wm;
   wm.RegisterWorker(1, "a", 1, 1000);

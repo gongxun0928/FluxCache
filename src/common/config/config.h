@@ -5,14 +5,34 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace fluxcache {
+
+struct RaftPeerConfigEntry {
+  int id = 0;
+  std::string endpoint;
+};
+
+struct RaftConfig {
+  bool enabled = false;
+  int server_id = 1;
+  uint16_t raft_port = 9001;
+  std::string snapshot_path;
+  int snapshot_distance = 10000;
+  int heartbeat_interval_ms = 100;
+  int election_timeout_lower_ms = 200;
+  int election_timeout_upper_ms = 400;
+  int reserved_log_items = 5000;
+  std::vector<RaftPeerConfigEntry> peers;
+};
 
 struct MasterConfig {
   std::string host;
   uint16_t port = 0;
   std::string db_path = "./fluxcache_meta";  // RocksDB path for InodeStore
   uint16_t metrics_port = 0;  // 0 = disabled
+  RaftConfig raft;
 };
 
 struct WorkerConfig {

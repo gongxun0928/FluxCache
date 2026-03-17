@@ -8,16 +8,21 @@
 #include "master/mount_table.h"
 #include "master/path_resolver.h"
 #include "master/worker_manager.h"
+#ifdef FLUXCACHE_ENABLE_RAFT
+#include "libnuraft/nuraft.hxx"
+#endif
 #include <atomic>
-#include <memory>
 #include <mutex>
 #include <set>
 
 namespace fluxcache {
 
 class InodeStore;
+#ifdef FLUXCACHE_ENABLE_RAFT
+class RaftNode;
+namespace proto { class JournalEntry; }
+#endif
 
-// MasterService implementation with WorkerManager and HashRingManager (P1-05C).
 class MasterServiceImpl : public proto::MasterService::Service {
  public:
   explicit MasterServiceImpl(InodeTree* inode_tree = nullptr,
@@ -31,7 +36,6 @@ class MasterServiceImpl : public proto::MasterService::Service {
                                 const ::fluxcache::proto::RegisterWorkerRequest* request,
                                 ::fluxcache::proto::RegisterWorkerResponse* response) override;
 
-  // Unimplemented RPCs for Phase 1 bootstrap
   ::grpc::Status GetFileInfo(::grpc::ServerContext* context,
                              const ::fluxcache::proto::GetFileInfoRequest* request,
                              ::fluxcache::proto::GetFileInfoResponse* response) override;
@@ -57,27 +61,51 @@ class MasterServiceImpl : public proto::MasterService::Service {
   void CheckWorkerHealthAndUpdateRing(int64_t now_ms,
                                       int64_t heartbeat_timeout_ms,
                                       int64_t suspect_grace_ms);
+  void SetWorkerHealthPolicy(int64_t heartbeat_timeout_ms,
+                             int64_t suspect_grace_ms);
 
-  // GC reconciliation: call Worker.Heartbeat for all workers.
   void RunHeartbeatToAllWorkers();
-
-  /// Update fluxcache_active_workers gauge from WorkerManager.
   void UpdateActiveWorkersGauge();
   void CallWorkerHeartbeat(WorkerId worker_id, const std::string& host,
                           uint16_t port);
 
-  // Add inode to pending orphans (called by DeleteFile).
   void AddPendingOrphan(InodeId inode_id);
-  // Remove inodes from pending when Worker reports audit.
   void RemovePendingOrphans(const std::vector<uint64_t>& audit_inode_ids);
 
-  // Bind InodeStore for MountTable persistence. Call before Start.
   void BindMountTableStore(InodeStore* store);
-  // Recover MountTable from RocksDB. Call after InodeTree recovery.
   void RecoverMountTable();
+
+  MountTable* mount_table_ptr() { return &mount_table_; }
+  WorkerManager* worker_manager_ptr() { return &worker_manager_; }
+  HashRingManager* hash_ring_manager_ptr() { return &hash_ring_manager_; }
+
+  Status ApplyReplicatedWorkerRegistration(WorkerId worker_id,
+                                           const std::string& host,
+                                           uint16_t port,
+                                           int64_t last_heartbeat_ms,
+                                           uint64_t next_worker_id);
+  Status ApplyReplicatedWorkerState(WorkerId worker_id, WorkerState state,
+                                    int64_t last_heartbeat_ms,
+                                    int64_t suspect_since_ms);
+  void BuildWorkerTopologySnapshot(proto::WorkerTopologySnapshot* snapshot) const;
+  bool RestoreWorkerTopologySnapshot(
+      const proto::WorkerTopologySnapshot& snapshot);
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  void SetRaftNode(RaftNode* node) { raft_node_ = node; }
+#endif
 
  private:
   static ::grpc::Status ToGrpcStatus(const Status& s);
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  bool IsRaftEnabled() const { return raft_node_ != nullptr; }
+  bool IsLeader() const;
+  ::grpc::Status NotLeaderError() const;
+  // Replicate a JournalEntry through Raft. Returns the result buffer.
+  nuraft::ptr<nuraft::buffer> ReplicateEntry(
+      const proto::JournalEntry& entry);
+#endif
 
   InodeTree* inode_tree_;
   MetricsRegistry* metrics_;
@@ -86,9 +114,17 @@ class MasterServiceImpl : public proto::MasterService::Service {
   WorkerManager worker_manager_;
   HashRingManager hash_ring_manager_;
   MountTable mount_table_;
+  mutable std::mutex topology_mu_;
+  std::atomic<int64_t> worker_heartbeat_timeout_ms_{15000};
+  std::atomic<int64_t> worker_suspect_grace_ms_{15000};
+  std::atomic<int64_t> topology_recovered_at_ms_{0};
 
   mutable std::mutex orphan_mu_;
   std::set<uint64_t> pending_orphan_inodes_;
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  RaftNode* raft_node_ = nullptr;
+#endif
 };
 
 }  // namespace fluxcache
