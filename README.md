@@ -108,7 +108,7 @@ These are still roadmap items, not current stable core claims:
 - FUSE access
 - C++ SDK beyond file-path MVP
 - S3 / HDFS backends
-- HA journal / Raft
+- HA journal / Raft (suspended; prototype behind `FLUXCACHE_ENABLE_RAFT=OFF`)
 - advanced resilience and degradation
 - production observability
 

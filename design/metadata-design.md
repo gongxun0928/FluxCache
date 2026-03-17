@@ -385,7 +385,7 @@ Worker 重启后从 MetaStore（RocksDB）恢复 Page 缓存索引，每条 Page
 | 方向 | 说明 | 优先级 | 阶段 |
 |---|---|---|---|
 | Rename 环路检测 | 移动目录时上溯 parent 链检测环路，拒绝非法 Rename | 高 | Phase 2 |
-| Raft Journal | InodeTree 写入经 Raft 复制，支持 Master HA | 高 | Phase 2 |
+| Raft Journal | InodeTree 写入经 Raft 复制，支持 Master HA（**已暂停**，P4-02 suspended） | 高 | 待定 |
 | file_version 自增 | mtime 替换为 Master 维护的自增 file_version，语义更精确 | 中 | Phase 2 |
 | 属性缓存 | InodeId 的 LRU 缓存，减少 RocksDB Get | 中 | Phase 2 |
 | HashRingManager 分段锁 | 读写分离 shared_mutex 已满足，高并发时可进一步优化 | 低 | Phase 3 |

@@ -1,7 +1,8 @@
 # HA Journal 设计
 
-> 日期: 2026-03-10（初版），2026-03-11（Spike 完成）
-> 状态: Spike 完成 — 设计收敛，待后续实现
+> 日期: 2026-03-10（初版），2026-03-11（Spike 完成），2026-03-17（HA 暂停）
+> 状态: Spike 完成 — 设计收敛；**NuRaft 原型已暂停**（P4-02 suspended），默认不编译（`FLUXCACHE_ENABLE_RAFT=OFF`）。
+> 当前策略：单 Master + RocksDB，Master 切换为离线运维操作。长期方向：raft-based RocksDB。
 
 ## 1. 目标
 

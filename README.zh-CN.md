@@ -108,7 +108,7 @@ Under File System (LocalFS first)
 - FUSE
 - 文件级 MVP 之外的 SDK 能力
 - S3 / HDFS 后端
-- HA Journal / Raft
+- HA Journal / Raft（已暂停；原型代码由 `FLUXCACHE_ENABLE_RAFT=OFF` 控制，默认不编译）
 - 高级降级与弹性策略
 - 生产级可观测性
 

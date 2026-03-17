@@ -19,6 +19,8 @@
 created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ completed
               │                │
               └── created ◄────┘  (打回 / 回退)
+
+created ──→ suspended  (方案风险过高，暂停待重新评估)
 ```
 
 | 状态 | 含义 |
@@ -28,6 +30,7 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | `pr_review` | PR 已提交，等待审查 |
 | `pr_merged` | PR 已合并 |
 | `completed` | 已完成并验证 |
+| `suspended` | 暂停，方案待重新评估 |
 
 ## 依赖解除规则
 
@@ -152,5 +155,5 @@ created ──→ in_progress ──→ pr_review ──→ pr_merged ──→ 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
 | P4-01 | MountTable RocksDB 持久化 | P1 | 无 | completed | | 2026-03-16 InodeStore mounts CF + MountTable 绑定 + 4 个持久化测试通过 |
-| P4-02 | Master HA via NuRaft | P0 | P4-01 | created | | Raft 日志复制 + Leader 选举 + Follower Read |
+| P4-02 | Master HA via NuRaft | P0 | P4-01 | suspended | | 默认不编译(FLUXCACHE_ENABLE_RAFT=OFF)；原型存在已知问题，HA 方案待重新评估 |
 | P4-03 | 多 Worker 部署测试脚本 | P2 | 无 | completed | | 2026-03-16 进程内 8 测试 + shell 部署脚本 |

@@ -86,7 +86,7 @@ find_package(miniocpp CONFIG REQUIRED)
 message(STATUS "S3 UFS: minio-cpp (miniocpp) found")
 
 # NuRaft for Master HA (P4-02)
-option(FLUXCACHE_ENABLE_RAFT "Build with NuRaft for Master HA" ON)
+option(FLUXCACHE_ENABLE_RAFT "Build with NuRaft for Master HA (experimental, default OFF)" OFF)
 if(FLUXCACHE_ENABLE_RAFT)
   include(FetchContent)
 

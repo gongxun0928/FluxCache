@@ -140,11 +140,16 @@ flowchart TD
 
 ## Phase I：HA 与弹性
 
-目标：先收敛语义，再推进 journal、超时、熔断与安全降级。
+目标：先收敛语义，再推进超时、熔断与安全降级。Master HA（Raft 复制）暂停探索。
+
+> **Master HA 现状**：P4-02（NuRaft 原型）已暂停，默认不编译（`FLUXCACHE_ENABLE_RAFT=OFF`）。
+> 当前策略：单 Master + RocksDB，Master 切换视为离线运维操作，缓存元数据丢失等同冷启动。
+> 长期方向：raft-based RocksDB（亿级文件规模），待方案重新评估。
 
 | Issue | 标题 | 依赖 | 分级 |
 |---|---|---|---|
 | [P2-10](./P2-10-master-ha-raft.md) | HA Journal / Raft 设计 Spike | P1-05B, P1-08B, P1-15D | P1 |
+| [P4-02](./P4-02-master-ha-nuraft.md) | Master HA via NuRaft (suspended) | P4-01 | P0 |
 | [P3-05](./P3-05-resilience-config.md) | 弹性配置层（超时 / 重试 / 熔断） | P2-08 | P1 |
 | [P3-06](./P3-06-recovery-degradation.md) | 安全恢复与受限降级策略 | P2-05B, P3-05, P2-10 | P0 |
 
