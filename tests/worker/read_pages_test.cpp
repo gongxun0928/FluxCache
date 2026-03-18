@@ -47,7 +47,7 @@ TEST_F(ReadPagesTest, FirstReadMissesThenFillsCache) {
   proto::ReadPagesRequest req;
   req.set_block_id(block_id);
   req.add_page_indices(0);
-  req.set_expected_mtime_ms(kMtime);
+  req.set_expected_file_version(kMtime);
   req.set_ufs_uri("fake://rp-miss");
   req.set_ufs_path("file.dat");
 
@@ -63,7 +63,7 @@ TEST_F(ReadPagesTest, FirstReadMissesThenFillsCache) {
   resp.Clear();
   req.set_block_id(block_id);
   req.add_page_indices(0);
-  req.set_expected_mtime_ms(kMtime);
+  req.set_expected_file_version(kMtime);
   req.set_ufs_uri("fake://rp-miss");
   req.set_ufs_path("file.dat");
   status = service_impl_->ReadPages(&ctx, &req, &resp);
@@ -91,7 +91,7 @@ TEST_F(ReadPagesTest, MtimeMismatchEvictsAndRefetches) {
   proto::ReadPagesRequest req;
   req.set_block_id(block_id);
   req.add_page_indices(0);
-  req.set_expected_mtime_ms(kMtime1);
+  req.set_expected_file_version(kMtime1);
   req.set_ufs_uri("fake://rp-mtime");
   req.set_ufs_path("file.dat");
 
@@ -100,7 +100,7 @@ TEST_F(ReadPagesTest, MtimeMismatchEvictsAndRefetches) {
   ASSERT_TRUE(status.ok()) << status.error_message();
   EXPECT_EQ(fake_ptr->read_count(), 1);
 
-  req.set_expected_mtime_ms(kMtime2);
+  req.set_expected_file_version(kMtime2);
   status = service_impl_->ReadPages(&ctx, &req, &resp);
   ASSERT_TRUE(status.ok()) << status.error_message();
   EXPECT_EQ(fake_ptr->read_count(), 2)
@@ -123,7 +123,7 @@ TEST_F(ReadPagesTest, MultiPageReturnsInOrder) {
   req.add_page_indices(0);
   req.add_page_indices(1);
   req.add_page_indices(2);
-  req.set_expected_mtime_ms(9999);
+  req.set_expected_file_version(9999);
   req.set_ufs_uri("fake://rp-multi");
   req.set_ufs_path("multi.dat");
 
@@ -143,7 +143,7 @@ TEST_F(ReadPagesTest, InvalidUfsUriReturnsError) {
   proto::ReadPagesRequest req;
   req.set_block_id(block_id);
   req.add_page_indices(0);
-  req.set_expected_mtime_ms(0);
+  req.set_expected_file_version(0);
   req.set_ufs_uri("invalid-no-scheme");
   req.set_ufs_path("file.dat");
 
@@ -160,7 +160,7 @@ TEST_F(ReadPagesTest, MissingUfsUriReturnsError) {
   proto::ReadPagesRequest req;
   req.set_block_id(block_id);
   req.add_page_indices(0);
-  req.set_expected_mtime_ms(0);
+  req.set_expected_file_version(0);
   req.set_ufs_path("file.dat");
 
   proto::ReadPagesResponse resp;
@@ -184,19 +184,19 @@ TEST_F(ReadPagesTest, BatchReadPagesReturnsOrderedBlockData) {
   auto* r0 = req.add_requests();
   r0->set_block_id(block_id);
   r0->add_page_indices(0);
-  r0->set_expected_mtime_ms(7777);
+  r0->set_expected_file_version(7777);
   r0->set_ufs_uri("fake://rp-batch");
   r0->set_ufs_path("batch.dat");
   auto* r1 = req.add_requests();
   r1->set_block_id(block_id);
   r1->add_page_indices(1);
-  r1->set_expected_mtime_ms(7777);
+  r1->set_expected_file_version(7777);
   r1->set_ufs_uri("fake://rp-batch");
   r1->set_ufs_path("batch.dat");
   auto* r2 = req.add_requests();
   r2->set_block_id(block_id);
   r2->add_page_indices(2);
-  r2->set_expected_mtime_ms(7777);
+  r2->set_expected_file_version(7777);
   r2->set_ufs_uri("fake://rp-batch");
   r2->set_ufs_path("batch.dat");
 

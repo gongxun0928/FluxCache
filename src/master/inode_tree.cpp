@@ -350,8 +350,7 @@ std::optional<InodeEntry> InodeTree::GetInode(InodeId id) {
   return store_->GetInode(id);
 }
 
-bool InodeTree::UpdateInodeSizeAndMtime(InodeId id, uint64_t size,
-                                        int64_t mtime_ms) {
+bool InodeTree::UpdateInodeSizeAndIncrementVersion(InodeId id, uint64_t size) {
   std::unique_lock lock(mu_);
   if (!ready_) return false;
 
@@ -360,7 +359,7 @@ bool InodeTree::UpdateInodeSizeAndMtime(InodeId id, uint64_t size,
   if (entry->is_directory()) return false;
 
   entry->size = size;
-  entry->modification_time_ms = mtime_ms;
+  entry->file_version += 1;
   return store_->PutInode(id, *entry);
 }
 
@@ -607,24 +606,29 @@ Status InodeTree::ApplyDeleteInode(InodeId id) {
   return Status::OK();
 }
 
-Status InodeTree::ApplyUpdateSizeAndMtime(InodeId id, uint64_t size,
-                                          int64_t mtime_ms) {
+Status InodeTree::ApplyUpdateSizeAndIncrementVersion(InodeId id, uint64_t size,
+                                                     uint64_t file_version) {
   std::unique_lock lock(mu_);
   if (!ready_) {
-    return Status::Unavailable("ApplyUpdateSizeAndMtime: InodeTree not ready");
+    return Status::Unavailable(
+        "ApplyUpdateSizeAndIncrementVersion: InodeTree not ready");
   }
 
   auto entry = store_->GetInode(id);
-  if (!entry) return Status::NotFound("ApplyUpdateSizeAndMtime: inode not found");
+  if (!entry) {
+    return Status::NotFound(
+        "ApplyUpdateSizeAndIncrementVersion: inode not found");
+  }
   if (entry->is_directory()) {
     return Status::InvalidArgument(
-        "ApplyUpdateSizeAndMtime: inode is a directory");
+        "ApplyUpdateSizeAndIncrementVersion: inode is a directory");
   }
 
   entry->size = size;
-  entry->modification_time_ms = mtime_ms;
+  entry->file_version = file_version;
   if (!store_->PutInode(id, *entry)) {
-    return Status::IOError("ApplyUpdateSizeAndMtime: failed to persist inode");
+    return Status::IOError(
+        "ApplyUpdateSizeAndIncrementVersion: failed to persist inode");
   }
   return Status::OK();
 }

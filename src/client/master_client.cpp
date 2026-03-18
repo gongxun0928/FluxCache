@@ -191,8 +191,7 @@ StatusOr<proto::CreateFileResponse> MasterClient::CreateFile(
   return Status::IOError(grpc_status.error_message().c_str());
 }
 
-Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
-                                  std::optional<int64_t> ufs_mtime_ms) {
+Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size) {
   if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
     return Status::Unavailable("circuit breaker open");
   }
@@ -200,9 +199,6 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size,
   proto::CompleteFileRequest req;
   req.set_inode_id(inode_id);
   req.set_size(size);
-  if (ufs_mtime_ms.has_value()) {
-    req.set_ufs_mtime_ms(*ufs_mtime_ms);
-  }
   proto::CompleteFileResponse resp;
   auto invoke = [&](const std::string& address) {
     auto channel = pool_->GetChannel(address);

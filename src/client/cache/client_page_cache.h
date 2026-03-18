@@ -11,19 +11,19 @@
 
 namespace fluxcache {
 
-/// Client-side L1 Page memory cache with mtime validation and LRU eviction.
+/// Client-side L1 Page memory cache with file_version validation and LRU eviction.
 /// Thread-safe via std::shared_mutex.
 class ClientPageCache {
  public:
   explicit ClientPageCache(size_t max_size_bytes);
 
-  /// Get cached page. Returns data if hit and mtime matches; otherwise returns
-  /// nullptr and evicts stale entry if present.
+  /// Get cached page. Returns data if hit and file_version matches; otherwise
+  /// returns nullptr and evicts stale entry if present.
   std::shared_ptr<const std::vector<uint8_t>> Get(PageId page_id,
-                                                  int64_t expected_mtime_ms);
+                                                  uint64_t expected_file_version);
 
   /// Put page into cache. May trigger LRU eviction when over capacity.
-  void Put(PageId page_id, std::vector<uint8_t> data, int64_t mtime_ms);
+  void Put(PageId page_id, std::vector<uint8_t> data, uint64_t file_version);
 
   /// Invalidate single page.
   void Invalidate(PageId page_id);
@@ -40,7 +40,7 @@ class ClientPageCache {
  private:
   struct CachedPage {
     std::shared_ptr<const std::vector<uint8_t>> data;
-    int64_t cached_mtime_ms = 0;
+    uint64_t cached_file_version = 0;
   };
 
   void EvictUntilFit(size_t required_bytes);

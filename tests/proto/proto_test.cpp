@@ -16,7 +16,7 @@ TEST(ProtoContractTest, FileInfoEncodeDecode) {
   orig.set_inode_id(42);
   orig.set_size(1024);
   orig.set_block_size(64 * 1024 * 1024);
-  orig.set_ufs_mtime_ms(1234567890);
+  orig.set_file_version(1234567890);
   orig.set_is_directory(false);
 
   std::string serialized;
@@ -28,7 +28,7 @@ TEST(ProtoContractTest, FileInfoEncodeDecode) {
   EXPECT_EQ(parsed.inode_id(), 42u);
   EXPECT_EQ(parsed.size(), 1024u);
   EXPECT_EQ(parsed.block_size(), 64u * 1024 * 1024);
-  EXPECT_EQ(parsed.ufs_mtime_ms(), 1234567890);
+  EXPECT_EQ(parsed.file_version(), 1234567890);
   EXPECT_FALSE(parsed.is_directory());
 }
 
@@ -37,7 +37,7 @@ TEST(ProtoContractTest, GetFileInfoResponseFields) {
   resp.mutable_file_info()->set_inode_id(1);
   resp.mutable_file_info()->set_size(100);
   resp.mutable_file_info()->set_block_size(65536);
-  resp.mutable_file_info()->set_ufs_mtime_ms(999);
+  resp.mutable_file_info()->set_file_version(999);
   resp.mutable_file_info()->set_is_directory(false);
   resp.set_ring_version(5);
   auto* w = resp.add_workers();
@@ -56,7 +56,7 @@ TEST(ProtoContractTest, GetFileInfoResponseFields) {
   EXPECT_EQ(parsed.file_info().inode_id(), 1u);
   EXPECT_EQ(parsed.file_info().size(), 100u);
   EXPECT_EQ(parsed.file_info().block_size(), 65536u);
-  EXPECT_EQ(parsed.file_info().ufs_mtime_ms(), 999);
+  EXPECT_EQ(parsed.file_info().file_version(), 999);
   EXPECT_FALSE(parsed.file_info().is_directory());
   EXPECT_EQ(parsed.ring_version(), 5u);
   ASSERT_EQ(parsed.workers_size(), 1);
@@ -72,7 +72,7 @@ TEST(ProtoContractTest, ReadPagesRequestFields) {
   req.set_block_id(0x123456789ABCDEF0);
   req.add_page_indices(0);
   req.add_page_indices(1);
-  req.set_expected_mtime_ms(12345);
+  req.set_expected_file_version(12345);
   req.set_ufs_uri("file:///data");
   req.set_ufs_path("/path/to/file");
 
@@ -86,7 +86,7 @@ TEST(ProtoContractTest, ReadPagesRequestFields) {
   ASSERT_EQ(parsed.page_indices_size(), 2);
   EXPECT_EQ(parsed.page_indices(0), 0u);
   EXPECT_EQ(parsed.page_indices(1), 1u);
-  EXPECT_EQ(parsed.expected_mtime_ms(), 12345);
+  EXPECT_EQ(parsed.expected_file_version(), 12345);
   EXPECT_EQ(parsed.ufs_uri(), "file:///data");
   EXPECT_EQ(parsed.ufs_path(), "/path/to/file");
 }

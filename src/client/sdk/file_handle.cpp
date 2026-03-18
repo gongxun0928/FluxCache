@@ -66,7 +66,7 @@ StatusOr<FileInfo> FileHandle::Stat() {
   info.inode_id = fi.inode_id();
   info.size = fi.size();
   info.is_directory = fi.is_directory();
-  info.ufs_mtime_ms = fi.ufs_mtime_ms();
+  info.file_version = fi.file_version();
   return info;
 }
 

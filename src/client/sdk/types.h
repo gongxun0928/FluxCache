@@ -26,7 +26,7 @@ struct FileInfo {
   uint64_t inode_id = 0;
   uint64_t size = 0;
   bool is_directory = false;
-  int64_t ufs_mtime_ms = 0;
+  uint64_t file_version = 0;
 };
 
 enum class OpenMode {

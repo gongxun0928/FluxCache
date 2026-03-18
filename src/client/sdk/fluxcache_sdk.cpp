@@ -73,7 +73,7 @@ StatusOr<std::unique_ptr<FileHandle>> FluxCacheSDK::Open(
   info.inode_id = fi.inode_id();
   info.size = fi.size();
   info.is_directory = fi.is_directory();
-  info.ufs_mtime_ms = fi.ufs_mtime_ms();
+  info.file_version = fi.file_version();
 
   return FileHandle::Create(path, impl_->client.get(), info);
 }
@@ -92,7 +92,7 @@ StatusOr<FileInfo> FluxCacheSDK::Stat(const std::string& path) {
   info.inode_id = fi.inode_id();
   info.size = fi.size();
   info.is_directory = fi.is_directory();
-  info.ufs_mtime_ms = fi.ufs_mtime_ms();
+  info.file_version = fi.file_version();
   return info;
 }
 

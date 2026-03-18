@@ -192,8 +192,8 @@ nuraft::ptr<nuraft::buffer> RaftStateMachine::commit(const nuraft::ulong log_idx
     }
     case proto::JournalEntry::kCompleteFile: {
       const auto& op = entry.complete_file();
-      Status status = inode_tree_->ApplyUpdateSizeAndMtime(
-          op.inode_id(), op.size(), op.mtime_ms());
+      Status status = inode_tree_->ApplyUpdateSizeAndIncrementVersion(
+          op.inode_id(), op.size(), op.file_version());
       result = SerializeRaftApplyResult(status.code());
       break;
     }

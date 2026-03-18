@@ -52,18 +52,11 @@ TEST_F(WritePagesTest, WriteThenReadReturnsNewContentAndMtime) {
 
   ASSERT_TRUE(status.ok()) << status.error_message();
 
-  // ReadPages with new mtime (FakeUfs increments mtime after Write)
-  std::unique_ptr<UFS> ufs;
-  ASSERT_TRUE(CreateUFS("fake", "wp-success", &ufs).ok());
-  FileStatus fs;
-  ASSERT_TRUE(ufs->GetStatus("file.dat", &fs).ok());
-  int64_t new_mtime = fs.mtime_ms;
-  ASSERT_GT(new_mtime, kInitialMtime) << "mtime should increase after Write";
-
+  // ReadPages with file_version 0 (WritePages stored with expected_file_version=0)
   proto::ReadPagesRequest read_req;
   read_req.set_block_id(block_id);
   read_req.add_page_indices(0);
-  read_req.set_expected_mtime_ms(new_mtime);
+  read_req.set_expected_file_version(0);
   read_req.set_ufs_uri("fake://wp-success");
   read_req.set_ufs_path("file.dat");
 

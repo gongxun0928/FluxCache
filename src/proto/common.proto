@@ -14,6 +14,6 @@ message FileInfo {
   uint64 inode_id = 1;
   uint64 size = 2;
   uint64 block_size = 3;
-  int64 ufs_mtime_ms = 4;
+  uint64 file_version = 4;  // Master-maintained, incremented on each write; used for cache validation
   bool is_directory = 5;
 }

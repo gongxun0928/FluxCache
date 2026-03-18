@@ -42,7 +42,6 @@ message CreateFileResponse {
 message CompleteFileRequest {
   uint64 inode_id = 1;
   uint64 size = 2;
-  optional int64 ufs_mtime_ms = 3;
 }
 
 message CompleteFileResponse {}
@@ -116,7 +115,7 @@ message CreateFileOp {
 message CompleteFileOp {
   uint64 inode_id = 1;
   uint64 size = 2;
-  int64 mtime_ms = 3;
+  uint64 file_version = 3;
 }
 
 message DeleteFileOp {

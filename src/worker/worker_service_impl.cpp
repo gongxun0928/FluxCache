@@ -94,7 +94,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
   }
 
   BlockId block_id = request->block_id();
-  int64_t expected_mtime_ms = request->expected_mtime_ms();
+  uint64_t expected_file_version = request->expected_file_version();
   const std::string& ufs_uri = request->ufs_uri();
   const std::string& ufs_path = request->ufs_path();
 
@@ -138,7 +138,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
     std::string page_data;
-    s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+    s = page_store_->GetPage(id, expected_file_version, &page_data,
                              allow_stale_read_on_ufs_timeout_);
     if (!s.ok()) {
       if (s.code() != StatusCode::kNotFound) {
@@ -167,7 +167,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
         }
         return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
       }
-      s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+      s = page_store_->PutPage(id, page_data, expected_file_version);
       if (!s.ok()) {
         return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
                               s.message());
@@ -190,7 +190,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
     std::string page_data;
-    s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+    s = page_store_->GetPage(id, expected_file_version, &page_data,
                              allow_stale_read_on_ufs_timeout_);
     if (!s.ok()) {
       if (s.code() != StatusCode::kNotFound) {
@@ -219,7 +219,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
         }
         return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
       }
-      s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+      s = page_store_->PutPage(id, page_data, expected_file_version);
       if (!s.ok()) {
         return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
                               s.message());
@@ -248,7 +248,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
 
   for (const auto& req : request->requests()) {
     BlockId block_id = req.block_id();
-    int64_t expected_mtime_ms = req.expected_mtime_ms();
+    int64_t expected_file_version = req.expected_file_version();
     const std::string& ufs_uri = req.ufs_uri();
     const std::string& ufs_path = req.ufs_path();
 
@@ -295,7 +295,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
           block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
       std::string page_data;
-      s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+      s = page_store_->GetPage(id, expected_file_version, &page_data,
                                allow_stale_read_on_ufs_timeout_);
       if (!s.ok()) {
         if (s.code() != StatusCode::kNotFound) {
@@ -324,7 +324,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
           }
           return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
         }
-        s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+        s = page_store_->PutPage(id, page_data, expected_file_version);
         if (!s.ok()) {
           return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 s.message());
@@ -349,7 +349,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
           block_offset + static_cast<uint64_t>(page_index) * page_size_;
 
       std::string page_data;
-      s = page_store_->GetPage(id, expected_mtime_ms, &page_data,
+      s = page_store_->GetPage(id, expected_file_version, &page_data,
                                allow_stale_read_on_ufs_timeout_);
       if (!s.ok()) {
         if (s.code() != StatusCode::kNotFound) {
@@ -378,7 +378,7 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
           }
           return ::grpc::Status(::grpc::StatusCode::NOT_FOUND, s.message());
         }
-        s = page_store_->PutPage(id, page_data, expected_mtime_ms);
+        s = page_store_->PutPage(id, page_data, expected_file_version);
         if (!s.ok()) {
           return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 s.message());
@@ -460,13 +460,9 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     }
   }
 
-  // Phase 2: UFS writes succeeded. Get mtime and update PageStore.
-  FileStatus status;
-  s = ufs->GetStatus(ufs_path, &status);
-  if (!s.ok()) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
-  }
-  int64_t mtime_ms = status.mtime_ms;
+  // Phase 2: UFS writes succeeded. Update PageStore with file_version from
+  // request (client provides it from GetFileInfo/CreateFile).
+  uint64_t file_version = request->expected_file_version();
 
   for (size_t i = 0; i < num_pages; ++i) {
     uint32_t pi = request->page_indices(static_cast<int>(i));
@@ -474,14 +470,10 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     PageId id{block_id, page_index};
     std::string_view page_data(data.data() + i * page_size_, page_size_);
 
-    s = page_store_->PutPage(id, page_data, mtime_ms);
+    s = page_store_->PutPage(id, page_data, file_version);
     if (!s.ok()) {
       return ::grpc::Status(::grpc::StatusCode::RESOURCE_EXHAUSTED, s.message());
     }
-  }
-
-  if (response) {
-    response->set_ufs_mtime_ms(mtime_ms);
   }
   return ::grpc::Status::OK;
 }

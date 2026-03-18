@@ -131,7 +131,7 @@ int RunStat(fluxcache::FluxCacheClient& client, int argc, char** argv) {
             << "inode_id: " << fi.inode_id() << "\n"
             << "size: " << fi.size() << "\n"
             << "is_directory: " << (fi.is_directory() ? "true" : "false") << "\n"
-            << "ufs_mtime_ms: " << fi.ufs_mtime_ms() << "\n";
+            << "file_version: " << fi.file_version() << "\n";
   return 0;
 }
 

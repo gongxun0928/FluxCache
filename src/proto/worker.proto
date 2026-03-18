@@ -15,7 +15,7 @@ service WorkerService {
 message ReadPagesRequest {
   uint64 block_id = 1;
   repeated uint32 page_indices = 2;
-  int64 expected_mtime_ms = 3;
+  uint64 expected_file_version = 3;
   string ufs_uri = 4;
   string ufs_path = 5;
 }
@@ -40,11 +40,10 @@ message WritePagesRequest {
   bytes data = 3;
   string ufs_uri = 4;
   string ufs_path = 5;
+  uint64 expected_file_version = 6;  // from GetFileInfo/CreateFile; Worker stores with cached page
 }
 
-message WritePagesResponse {
-  optional int64 ufs_mtime_ms = 1;  // mtime from UFS after write, for Client CompleteFile
-}
+message WritePagesResponse {}
 
 // HeartbeatRequest: Master sends to Worker. Tells Worker what to clean.
 message HeartbeatRequest {

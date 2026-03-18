@@ -21,7 +21,7 @@ class EvictionPolicy;
 class MetaStore;
 
 // Page-level cache engine. Maintains PageId -> TierBlockHandle index and
-// BlockId -> page_index set secondary index. Validates mtime on GetPage.
+// BlockId -> page_index set secondary index. Validates file_version on GetPage.
 // Optionally syncs with MetaStore for recovery.
 class PageStore {
  public:
@@ -31,17 +31,17 @@ class PageStore {
                     MetaStore* meta_store = nullptr,
                     EvictionPolicy* eviction_policy = nullptr);
 
-  // GetPage: returns data if hit and expected_mtime matches; on mismatch
+  // GetPage: returns data if hit and expected_file_version matches; on mismatch
   // deletes the stale page and returns NotFound, unless allow_keep_on_mismatch.
-  Status GetPage(PageId id, int64_t expected_mtime_ms, std::string* out,
+  Status GetPage(PageId id, uint64_t expected_file_version, std::string* out,
                  bool allow_keep_on_mismatch = false);
 
-  // GetPageRelaxed: returns data if page exists, regardless of mtime.
+  // GetPageRelaxed: returns data if page exists, regardless of file_version.
   Status GetPageRelaxed(PageId id, std::string* out);
 
-  // PutPage: writes page with mtime; returns ResourceExhausted when tier
+  // PutPage: writes page with file_version; returns ResourceExhausted when tier
   // capacity is insufficient.
-  Status PutPage(PageId id, std::string_view data, int64_t mtime_ms);
+  Status PutPage(PageId id, std::string_view data, uint64_t file_version);
 
   Status DeletePage(PageId id);
   Status DeleteBlockPages(BlockId block_id);
@@ -74,7 +74,7 @@ class PageStore {
  private:
   struct PageEntry {
     TierBlockHandle handle;
-    int64_t mtime_ms{0};
+    uint64_t file_version{0};
   };
 
   void RemoveFromBlockIndex(PageId id);

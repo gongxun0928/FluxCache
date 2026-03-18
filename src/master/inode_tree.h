@@ -63,9 +63,9 @@ class InodeTree {
   // Get inode entry for path (for FileInfo).
   std::optional<InodeEntry> GetInode(InodeId id);
 
-  // Update inode size and modification time. Used by CompleteFile.
+  // Update inode size and increment file_version. Used by CompleteFile.
   // Returns false if inode not found or is directory.
-  bool UpdateInodeSizeAndMtime(InodeId id, uint64_t size, int64_t mtime_ms);
+  bool UpdateInodeSizeAndIncrementVersion(InodeId id, uint64_t size);
 
   // Returns true if any inode exists whose logical path equals prefix or is
   // under prefix (e.g. /data or /data/file). Used for Unmount safety check.
@@ -89,7 +89,8 @@ class InodeTree {
                               InodeId parent_id, int64_t creation_time_ms,
                               int64_t modification_time_ms, InodeId next_id);
   Status ApplyDeleteInode(InodeId id);
-  Status ApplyUpdateSizeAndMtime(InodeId id, uint64_t size, int64_t mtime_ms);
+  Status ApplyUpdateSizeAndIncrementVersion(InodeId id, uint64_t size,
+                                            uint64_t file_version);
 
   // Resolve path components to find parent_id for a given path.
   // Used by leader before creating Raft log entries.

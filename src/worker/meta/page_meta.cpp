@@ -67,8 +67,8 @@ std::string EncodePageMetaValue(const PageMeta& meta) {
   value[0] = static_cast<char>(meta.tier_type);
   uint64_t be_block = HostToBigEndian(meta.tier_block_id);
   std::memcpy(&value[1], &be_block, 8);
-  int64_t be_mtime = HostToBigEndian(static_cast<uint64_t>(meta.cached_mtime_ms));
-  std::memcpy(&value[9], &be_mtime, 8);
+  uint64_t be_ver = HostToBigEndian(meta.cached_file_version);
+  std::memcpy(&value[9], &be_ver, 8);
   return value;
 }
 
@@ -79,9 +79,9 @@ std::optional<PageMeta> DecodePageMetaValue(std::string_view value) {
   uint64_t be_block;
   std::memcpy(&be_block, value.data() + 1, 8);
   meta.tier_block_id = BigEndianToHost(be_block);
-  int64_t be_mtime;
-  std::memcpy(&be_mtime, value.data() + 9, 8);
-  meta.cached_mtime_ms = static_cast<int64_t>(BigEndianToHost(static_cast<uint64_t>(be_mtime)));
+  uint64_t be_ver;
+  std::memcpy(&be_ver, value.data() + 9, 8);
+  meta.cached_file_version = BigEndianToHost(be_ver);
   return meta;
 }
 

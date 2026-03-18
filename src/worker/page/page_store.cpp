@@ -25,7 +25,7 @@ void PageStore::SyncMetaPut(PageId id, const PageEntry& entry) {
   PageMeta meta;
   meta.tier_type = tt;
   meta.tier_block_id = tier_block_id;
-  meta.cached_mtime_ms = entry.mtime_ms;
+  meta.cached_file_version = entry.file_version;
   meta_store_->Put(id, meta);
 }
 
@@ -33,12 +33,11 @@ void PageStore::SyncMetaDelete(PageId id) {
   if (meta_store_) meta_store_->Delete(id);
 }
 
-Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
+Status PageStore::GetPage(PageId id, uint64_t expected_file_version,
                          std::string* out, bool allow_keep_on_mismatch) {
   if (!out) return Status::InvalidArgument("null output");
 
   TierBlockHandle handle_copy;
-  int64_t mtime_copy;
   {
     std::shared_lock<std::shared_mutex> rec(recovery_mu_);
     size_t si = StripeIndex(id.block_id);
@@ -50,19 +49,18 @@ Status PageStore::GetPage(PageId id, int64_t expected_mtime_ms,
     }
 
     const PageEntry& entry = it->second;
-    if (entry.mtime_ms != expected_mtime_ms) {
+    if (entry.file_version != expected_file_version) {
       if (allow_keep_on_mismatch) {
-        return Status::NotFound("mtime mismatch, try UFS");
+        return Status::NotFound("file_version mismatch, try UFS");
       }
       st.unlock();
       rec.unlock();
       Status s = DeletePage(id);
       if (!s.ok()) return s;
-      return Status::NotFound("mtime mismatch, stale page removed");
+      return Status::NotFound("file_version mismatch, stale page removed");
     }
 
     handle_copy = entry.handle;
-    mtime_copy = entry.mtime_ms;
   }
 
   Status s = tier_->Read(handle_copy, 0, page_size_, out);
@@ -95,7 +93,8 @@ Status PageStore::GetPageRelaxed(PageId id, std::string* out) {
   return s;
 }
 
-Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
+Status PageStore::PutPage(PageId id, std::string_view data,
+                          uint64_t file_version) {
   if (id.block_id == kInvalidBlockId) {
     return Status::InvalidArgument("invalid page id");
   }
@@ -135,7 +134,7 @@ Status PageStore::PutPage(PageId id, std::string_view data, int64_t mtime_ms) {
     std::shared_lock<std::shared_mutex> rec(recovery_mu_);
     size_t si = StripeIndex(id.block_id);
     std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
-    page_index_[id] = PageEntry{handle, mtime_ms};
+    page_index_[id] = PageEntry{handle, file_version};
     block_to_pages_[id.block_id].insert(id.page_index);
     SyncMetaPut(id, page_index_[id]);
     if (eviction_policy_) eviction_policy_->OnInsert(id);
@@ -212,7 +211,7 @@ void PageStore::RecoverFromMetaStore() {
     TierBlockHandle handle = tm->RegisterRecoveredBlock(meta.tier_type,
                                                         meta.tier_block_id);
     if (handle.valid()) {
-      page_index_[id] = PageEntry{handle, meta.cached_mtime_ms};
+      page_index_[id] = PageEntry{handle, meta.cached_file_version};
       block_to_pages_[id.block_id].insert(id.page_index);
       if (eviction_policy_) eviction_policy_->OnInsert(id);
     } else {
@@ -252,7 +251,7 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
   }
 
   TierBlockHandle old_handle;
-  int64_t mtime_ms;
+  uint64_t file_version;
   {
     std::shared_lock<std::shared_mutex> rec(recovery_mu_);
     size_t si = StripeIndex(id.block_id);
@@ -263,7 +262,7 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
       return Status::NotFound("page not found");
     }
     old_handle = it->second.handle;
-    mtime_ms = it->second.mtime_ms;
+    file_version = it->second.file_version;
   }
 
   std::string data;
@@ -284,7 +283,7 @@ Status PageStore::RelocatePage(PageId id, TierType target_tier) {
     std::shared_lock<std::shared_mutex> rec(recovery_mu_);
     size_t si = StripeIndex(id.block_id);
     std::unique_lock<std::shared_mutex> st(stripe_locks_[si]);
-    page_index_[id] = PageEntry{new_handle, mtime_ms};
+    page_index_[id] = PageEntry{new_handle, file_version};
     SyncMetaPut(id, page_index_[id]);
   }
   return tier_->Release(old_handle);

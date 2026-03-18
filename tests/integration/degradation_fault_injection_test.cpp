@@ -119,7 +119,7 @@ TEST_F(DegradationFaultInjectionTest, StaleReadWhenUfsUnavailableAndCacheExists)
   uint64_t inode_id = fi.value().file_info().inode_id();
   uint64_t file_size = fi.value().file_info().size();
   ASSERT_TRUE(client.GetMasterClient()
-                  ->CompleteFile(inode_id, file_size, 999999)
+                  ->CompleteFile(inode_id, file_size)
                   .ok())
       << "Update mtime in Master to trigger stale path";
 

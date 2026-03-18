@@ -56,7 +56,8 @@ TEST_F(GetFileInfoTest, ExistingFileReturnsFullFileInfo) {
   ASSERT_TRUE(status.ok()) << status.error_message();
   EXPECT_GT(resp.file_info().inode_id(), 0u);
   EXPECT_EQ(resp.file_info().size(), kSize);
-  EXPECT_EQ(resp.file_info().ufs_mtime_ms(), kMtimeMs);
+  EXPECT_EQ(resp.file_info().file_version(), 0u)
+      << "synced file has file_version 0";
   EXPECT_GT(resp.file_info().block_size(), 0u);
   EXPECT_FALSE(resp.file_info().is_directory());
   EXPECT_EQ(resp.ufs_uri(), "fake://gfi-existing");
@@ -122,10 +123,9 @@ TEST_F(GetFileInfoTest, WorkersAndRingVersionMatchGetHashRing) {
   EXPECT_EQ(fi_resp.workers(0).worker_id(), ring_resp.workers(0).worker_id());
 }
 
-TEST_F(GetFileInfoTest, UfsMtimeMsPropagatedFromFakeUfs) {
-  constexpr int64_t kControlledMtime = 987654321000;
+TEST_F(GetFileInfoTest, SyncedFileHasFileVersionZero) {
   auto fake = std::make_unique<FakeUfs>();
-  fake->AddFile("mtime_test.dat", 1024, kControlledMtime);
+  fake->AddFile("mtime_test.dat", 1024, 0);
   RegisterFakeUfsForTest("gfi-mtime", std::move(fake));
 
   MasterServiceImpl impl(tree_.get());
@@ -143,8 +143,8 @@ TEST_F(GetFileInfoTest, UfsMtimeMsPropagatedFromFakeUfs) {
   auto status = impl.GetFileInfo(&ctx, &req, &resp);
 
   ASSERT_TRUE(status.ok()) << status.error_message();
-  EXPECT_EQ(resp.file_info().ufs_mtime_ms(), kControlledMtime)
-      << "ufs_mtime_ms should be propagated from FakeUfs";
+  EXPECT_EQ(resp.file_info().file_version(), 0u)
+      << "synced file has file_version 0";
 }
 
 TEST_F(GetFileInfoTest, EmptyPathReturnsInvalidArgument) {

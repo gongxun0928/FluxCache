@@ -72,9 +72,7 @@ int fc_getattr(const char* path, struct stat* stbuf, struct fuse_file_info* fi) 
     stbuf->st_size = static_cast<off_t>(info.size);
   }
   stbuf->st_ino = static_cast<ino_t>(info.inode_id);
-  if (info.ufs_mtime_ms != 0) {
-    stbuf->st_mtime = info.ufs_mtime_ms / 1000;
-  }
+  // file_version used for cache validation; st_mtime left as 0
   return 0;
 }
 

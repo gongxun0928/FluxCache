@@ -6,14 +6,14 @@ ClientPageCache::ClientPageCache(size_t max_size_bytes)
     : max_size_bytes_(max_size_bytes) {}
 
 std::shared_ptr<const std::vector<uint8_t>> ClientPageCache::Get(
-    PageId page_id, int64_t expected_mtime_ms) {
+    PageId page_id, uint64_t expected_file_version) {
   std::unique_lock lock(mu_);
   auto it = pages_.find(page_id);
   if (it == pages_.end()) {
     return nullptr;
   }
   CachedPage& entry = it->second.first;
-  if (entry.cached_mtime_ms != expected_mtime_ms) {
+  if (entry.cached_file_version != expected_file_version) {
     RemoveLocked(page_id);
     return nullptr;
   }
@@ -25,7 +25,7 @@ std::shared_ptr<const std::vector<uint8_t>> ClientPageCache::Get(
 }
 
 void ClientPageCache::Put(PageId page_id, std::vector<uint8_t> data,
-                         int64_t mtime_ms) {
+                         uint64_t file_version) {
   size_t page_bytes = data.size();
   if (page_bytes == 0) return;
 
@@ -42,7 +42,7 @@ void ClientPageCache::Put(PageId page_id, std::vector<uint8_t> data,
   auto shared = std::make_shared<std::vector<uint8_t>>(std::move(data));
   CachedPage entry;
   entry.data = shared;
-  entry.cached_mtime_ms = mtime_ms;
+  entry.cached_file_version = file_version;
 
   lru_order_.push_front(page_id);
   pages_[page_id] = {entry, lru_order_.begin()};

@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
   }
   const auto& fi = stat_result.value();
   std::cout << "Stat: inode=" << fi.inode_id << " size=" << fi.size
-            << " is_dir=" << fi.is_directory << " mtime_ms=" << fi.ufs_mtime_ms
+            << " is_dir=" << fi.is_directory << " file_version=" << fi.file_version
             << "\n";
 
   // Delete (server may not implement DeleteFile yet in MVP)

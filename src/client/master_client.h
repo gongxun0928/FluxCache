@@ -41,9 +41,9 @@ class MasterClient {
   /// Create new file at path. Returns AlreadyExists if path exists.
   StatusOr<proto::CreateFileResponse> CreateFile(const std::string& path);
 
-  /// Complete file write: update size and mtime. Call after WritePages succeed.
-  Status CompleteFile(uint64_t inode_id, uint64_t size,
-                     std::optional<int64_t> ufs_mtime_ms = std::nullopt);
+  /// Complete file write: update size and increment file_version. Call after
+  /// WritePages succeed.
+  Status CompleteFile(uint64_t inode_id, uint64_t size);
 
   /// Delete file at path. Returns NotFound if path not found.
   /// Server may return Unavailable/IOError if DeleteFile not yet implemented.

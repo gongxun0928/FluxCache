@@ -134,11 +134,9 @@ TEST_F(CreateCompleteFileTest, CompleteFileUpdatesSizeAndMtime) {
   uint64_t inode_id = create_resp.file_info().inode_id();
 
   constexpr uint64_t kNewSize = 4096;
-  constexpr int64_t kNewMtimeMs = 1234567890000;
   proto::CompleteFileRequest complete_req;
   complete_req.set_inode_id(inode_id);
   complete_req.set_size(kNewSize);
-  complete_req.set_ufs_mtime_ms(kNewMtimeMs);
   proto::CompleteFileResponse complete_resp;
   auto complete_status = impl.CompleteFile(&ctx, &complete_req, &complete_resp);
   ASSERT_TRUE(complete_status.ok()) << complete_status.error_message();
@@ -150,7 +148,8 @@ TEST_F(CreateCompleteFileTest, CompleteFileUpdatesSizeAndMtime) {
   ASSERT_TRUE(fi_status.ok()) << fi_status.error_message();
 
   EXPECT_EQ(fi_resp.file_info().size(), kNewSize);
-  EXPECT_EQ(fi_resp.file_info().ufs_mtime_ms(), kNewMtimeMs);
+  EXPECT_EQ(fi_resp.file_info().file_version(), 1u)
+      << "CompleteFile increments file_version from 0 to 1";
 }
 
 TEST_F(CreateCompleteFileTest, CompleteFileInvalidInodeReturnsNotFound) {
@@ -160,7 +159,6 @@ TEST_F(CreateCompleteFileTest, CompleteFileInvalidInodeReturnsNotFound) {
   proto::CompleteFileRequest req;
   req.set_inode_id(99999);
   req.set_size(100);
-  req.set_ufs_mtime_ms(0);
   proto::CompleteFileResponse resp;
   auto status = impl.CompleteFile(&ctx, &req, &resp);
 

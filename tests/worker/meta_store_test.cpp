@@ -40,14 +40,14 @@ TEST_F(MetaStoreTest, PutGetDelete) {
   PageMeta meta;
   meta.tier_type = TierType::kSSD;
   meta.tier_block_id = 42;
-  meta.cached_mtime_ms = 1000;
+  meta.cached_file_version = 1000;
 
   ASSERT_TRUE(store.Put(id, meta));
   auto got = store.Get(id);
   ASSERT_TRUE(got.has_value());
   EXPECT_EQ(got->tier_type, TierType::kSSD);
   EXPECT_EQ(got->tier_block_id, 42u);
-  EXPECT_EQ(got->cached_mtime_ms, 1000);
+  EXPECT_EQ(got->cached_file_version, 1000);
 
   ASSERT_TRUE(store.Delete(id));
   EXPECT_FALSE(store.Get(id).has_value());
@@ -62,7 +62,7 @@ TEST_F(MetaStoreTest, DeleteByBlock) {
     PageMeta meta;
     meta.tier_type = TierType::kSSD;
     meta.tier_block_id = i;
-    meta.cached_mtime_ms = 2000;
+    meta.cached_file_version = 2000;
     ASSERT_TRUE(store.Put(PageId{block_id, i}, meta));
   }
 

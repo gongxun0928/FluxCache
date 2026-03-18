@@ -200,7 +200,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
     return Status::InvalidArgument("invalid block_size from Master");
   }
   InodeId inode_id = fi.inode_id();
-  int64_t expected_mtime_ms = fi.ufs_mtime_ms();
+  uint64_t expected_file_version = fi.file_version();
   const std::string& ufs_uri = fi_resp.ufs_uri();
   const std::string& ufs_path = fi_resp.ufs_path();
 
@@ -261,7 +261,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
     for (uint32_t pi = first_page; pi <= last_page; ++pi) {
       PageId page_id = MakePageId(block_id, static_cast<uint16_t>(pi));
       if (cache_) {
-        auto cached = cache_->Get(page_id, expected_mtime_ms);
+        auto cached = cache_->Get(page_id, expected_file_version);
         if (cached) {
           state.page_data[pi] = std::string(cached->begin(), cached->end());
           continue;
@@ -285,7 +285,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
       auto* st = batch[0];
       proto::ReadPagesRequest req;
       req.set_block_id(st->block_id);
-      req.set_expected_mtime_ms(expected_mtime_ms);
+      req.set_expected_file_version(expected_file_version);
       req.set_ufs_uri(ufs_uri);
       req.set_ufs_path(ufs_path);
       for (uint32_t pi : st->missing_pages) req.add_page_indices(pi);
@@ -314,7 +314,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
         if (cache_) {
           std::vector<uint8_t> vec(chunk.begin(), chunk.end());
           cache_->Put(MakePageId(st->block_id, static_cast<uint16_t>(pi)),
-                     std::move(vec), expected_mtime_ms);
+                     std::move(vec), expected_file_version);
         }
         pos += chunk_len;
       }
@@ -323,7 +323,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
       for (auto* st : batch) {
         auto* r = batch_req.add_requests();
         r->set_block_id(st->block_id);
-        r->set_expected_mtime_ms(expected_mtime_ms);
+        r->set_expected_file_version(expected_file_version);
         r->set_ufs_uri(ufs_uri);
         r->set_ufs_path(ufs_path);
         for (uint32_t pi : st->missing_pages) r->add_page_indices(pi);
@@ -359,7 +359,7 @@ StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
           if (cache_) {
             std::vector<uint8_t> vec(chunk.begin(), chunk.end());
             cache_->Put(MakePageId(st->block_id, static_cast<uint16_t>(pi)),
-                       std::move(vec), expected_mtime_ms);
+                       std::move(vec), expected_file_version);
           }
           pos += chunk_len;
         }
@@ -438,6 +438,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
   InodeId inode_id = 0;
   uint64_t file_size = 0;
   size_t block_size = 0;
+  uint64_t file_version = 0;
   std::string ufs_uri, ufs_path;
 
   auto fi_result = master_client_->GetFileInfo(path);
@@ -450,6 +451,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
     inode_id = fi.inode_id();
     file_size = fi.size();
     block_size = fi.block_size();
+    file_version = fi.file_version();
     ufs_uri = fi_resp.ufs_uri();
     ufs_path = fi_resp.ufs_path();
 
@@ -471,6 +473,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
         inode_id = fi.inode_id();
         file_size = fi.size();
         block_size = fi.block_size();
+        file_version = fi.file_version();
         ufs_uri = fi_resp.ufs_uri();
         ufs_path = fi_resp.ufs_path();
         proto::GetHashRingResponse ring_resp;
@@ -488,6 +491,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
       inode_id = cr.file_info().inode_id();
       file_size = cr.file_info().size();
       block_size = cr.file_info().block_size();
+      file_version = cr.file_info().file_version();
       ufs_uri = cr.ufs_uri();
       ufs_path = cr.ufs_path();
       Status s = RefreshRing();
@@ -510,7 +514,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
 
   if (data.empty()) {
     if (new_size != file_size) {
-      return master_client_->CompleteFile(inode_id, new_size, std::nullopt);
+      return master_client_->CompleteFile(inode_id, new_size);
     }
     return Status::OK();
   }
@@ -519,8 +523,6 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
       static_cast<uint32_t>(offset / block_size);
   uint32_t last_block_idx =
       static_cast<uint32_t>((offset + data.size() - 1) / block_size);
-
-  int64_t last_mtime_ms = 0;
 
   for (uint32_t bi = first_block_idx; bi <= last_block_idx; ++bi) {
     BlockId block_id = MakeBlockId(inode_id, bi);
@@ -562,6 +564,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
 
     proto::WritePagesRequest req;
     req.set_block_id(block_id);
+    req.set_expected_file_version(file_version);
     req.set_ufs_uri(ufs_uri);
     req.set_ufs_path(ufs_path);
     for (uint32_t pi = first_page; pi <= last_page; ++pi) {
@@ -583,14 +586,9 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
     if (!s.ok()) {
       return s;
     }
-    if (write_resp.has_ufs_mtime_ms()) {
-      last_mtime_ms = write_resp.ufs_mtime_ms();
-    }
   }
 
-  return master_client_->CompleteFile(
-      inode_id, new_size,
-      last_mtime_ms != 0 ? std::optional<int64_t>(last_mtime_ms) : std::nullopt);
+  return master_client_->CompleteFile(inode_id, new_size);
 }
 
 Status FluxCacheClient::Delete(const std::string& path) {

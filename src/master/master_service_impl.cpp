@@ -283,7 +283,7 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
   fi->set_inode_id(*inode_id);
   fi->set_size(entry->size);
   fi->set_block_size(entry->block_size);
-  fi->set_ufs_mtime_ms(entry->modification_time_ms);
+  fi->set_file_version(entry->file_version);
   fi->set_is_directory(entry->is_directory());
   response->set_ring_version(snap.ring_version);
   response->set_ufs_uri(ufs_uri);
@@ -404,7 +404,7 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
     fi->set_inode_id(apply->value.value_or(alloc.id));
     fi->set_size(entry->size);
     fi->set_block_size(entry->block_size);
-    fi->set_ufs_mtime_ms(entry->modification_time_ms);
+    fi->set_file_version(entry->file_version);
     fi->set_is_directory(false);
     response->set_ufs_uri(ufs_uri);
     response->set_ufs_path(ufs_path);
@@ -430,7 +430,7 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
   fi->set_inode_id(*inode_id);
   fi->set_size(entry->size);
   fi->set_block_size(entry->block_size);
-  fi->set_ufs_mtime_ms(entry->modification_time_ms);
+  fi->set_file_version(entry->file_version);
   fi->set_is_directory(false);
   response->set_ufs_uri(ufs_uri);
   response->set_ufs_path(ufs_path);
@@ -468,9 +468,7 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
                           "CompleteFile: inode is a directory");
   }
 
-  int64_t mtime_ms = request->has_ufs_mtime_ms()
-                         ? request->ufs_mtime_ms()
-                         : entry->modification_time_ms;
+  uint64_t new_file_version = entry->file_version + 1;
 
 #ifdef FLUXCACHE_ENABLE_RAFT
   if (IsRaftEnabled()) {
@@ -478,7 +476,7 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
     auto* op = je.mutable_complete_file();
     op->set_inode_id(request->inode_id());
     op->set_size(request->size());
-    op->set_mtime_ms(mtime_ms);
+    op->set_file_version(new_file_version);
 
     auto result = ReplicateEntry(je);
     if (!result) {
@@ -498,8 +496,8 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
   }
 #endif
 
-  if (!inode_tree_->UpdateInodeSizeAndMtime(request->inode_id(),
-                                            request->size(), mtime_ms)) {
+  if (!inode_tree_->UpdateInodeSizeAndIncrementVersion(request->inode_id(),
+                                                        request->size())) {
     return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                           "CompleteFile: failed to update inode");
   }

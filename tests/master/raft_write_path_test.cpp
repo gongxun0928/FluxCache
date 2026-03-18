@@ -185,17 +185,16 @@ TEST_F(RaftWritePathTest, CreateFileCompleteDeleteThroughRaft) {
   proto::CompleteFileRequest complete_req;
   complete_req.set_inode_id(inode_id);
   complete_req.set_size(4096);
-  complete_req.set_ufs_mtime_ms(9999);
   proto::CompleteFileResponse complete_resp;
   auto complete_status =
       impl_->CompleteFile(&ctx, &complete_req, &complete_resp);
   ASSERT_TRUE(complete_status.ok()) << complete_status.error_message();
 
-  // Verify size & mtime updated
+  // Verify size & file_version updated
   auto entry = tree_->GetInode(inode_id);
   ASSERT_TRUE(entry.has_value());
   EXPECT_EQ(entry->size, 4096u);
-  EXPECT_EQ(entry->modification_time_ms, 9999);
+  EXPECT_EQ(entry->file_version, 1u);
 
   // GetFileInfo (read path, always local)
   proto::GetFileInfoRequest fi_req;
@@ -204,7 +203,7 @@ TEST_F(RaftWritePathTest, CreateFileCompleteDeleteThroughRaft) {
   auto fi_status = impl_->GetFileInfo(&ctx, &fi_req, &fi_resp);
   ASSERT_TRUE(fi_status.ok()) << fi_status.error_message();
   EXPECT_EQ(fi_resp.file_info().size(), 4096u);
-  EXPECT_EQ(fi_resp.file_info().ufs_mtime_ms(), 9999);
+  EXPECT_EQ(fi_resp.file_info().file_version(), 1u);
 
   // DeleteFile goes through Raft
   proto::DeleteFileRequest delete_req;
