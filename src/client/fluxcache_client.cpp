@@ -6,6 +6,7 @@
 #include "master.pb.h"
 #include "worker.pb.h"
 #include <algorithm>
+#include <chrono>
 #include <future>
 #include <string>
 #include <unordered_map>
@@ -68,7 +69,28 @@ FluxCacheClient::FluxCacheClient(const ClientConfig& config)
   }
 }
 
-FluxCacheClient::~FluxCacheClient() = default;
+FluxCacheClient::~FluxCacheClient() {
+  std::lock_guard<std::mutex> lock(prefetch_tasks_mutex_);
+  for (auto& task : prefetch_tasks_) {
+    try {
+      task.get();
+    } catch (...) {
+      // Prefetch is best-effort; never throw from destructor.
+    }
+  }
+  prefetch_tasks_.clear();
+}
+void FluxCacheClient::ReapCompletedPrefetchTasksLocked() {
+  auto done = prefetch_tasks_.begin();
+  while (done != prefetch_tasks_.end()) {
+    if (done->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      done->get();
+      done = prefetch_tasks_.erase(done);
+      continue;
+    }
+    ++done;
+  }
+}
 
 Status FluxCacheClient::RefreshRing() {
   auto result = master_client_->GetHashRing();
@@ -76,12 +98,12 @@ Status FluxCacheClient::RefreshRing() {
     return result.status();
   }
   cached_ring_.Update(result.value());
-  ring_fetched_ = true;
+  ring_fetched_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
 StatusOr<WorkerId> FluxCacheClient::GetWorkerForBlock(BlockId block_id) {
-  if (!ring_fetched_) {
+  if (!ring_fetched_.load(std::memory_order_acquire)) {
     auto s = RefreshRing();
     if (!s.ok()) {
       return s;
@@ -97,7 +119,7 @@ StatusOr<WorkerId> FluxCacheClient::GetWorkerForBlock(BlockId block_id) {
 
 StatusOr<std::unique_ptr<WorkerClient>> FluxCacheClient::GetWorkerClient(
     WorkerId worker_id) {
-  if (!ring_fetched_) {
+  if (!ring_fetched_.load(std::memory_order_acquire)) {
     auto s = RefreshRing();
     if (!s.ok()) {
       return s;
@@ -139,12 +161,20 @@ CircuitBreaker* FluxCacheClient::GetOrCreateWorkerCircuitBreaker(
 
 void FluxCacheClient::SetRingForTest(const proto::GetHashRingResponse& resp) {
   cached_ring_.Update(resp);
-  ring_fetched_ = true;
+  ring_fetched_.store(true, std::memory_order_release);
 }
 
 StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
                                             uint64_t offset, uint64_t size,
                                             bool* stale_out) {
+  return ReadInternal(path, offset, size, stale_out, true);
+}
+
+StatusOr<std::string> FluxCacheClient::ReadInternal(const std::string& path,
+                                                    uint64_t offset,
+                                                    uint64_t size,
+                                                    bool* stale_out,
+                                                    bool allow_prefetch) {
   auto fi_result = master_client_->GetFileInfo(path);
   if (!fi_result.ok()) {
     return fi_result.status();
@@ -184,7 +214,7 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
     *ring_resp.add_workers() = w;
   }
   cached_ring_.Update(ring_resp);
-  ring_fetched_ = true;
+  ring_fetched_.store(true, std::memory_order_release);
 
   uint32_t first_block_idx =
       static_cast<uint32_t>(offset / block_size);
@@ -380,19 +410,24 @@ StatusOr<std::string> FluxCacheClient::Read(const std::string& path,
   }
 
   // Prefetch next blocks when sequential read.
-  if (prefetch_blocks_ > 0 && cache_ && last_block_idx + 1 < GetBlockCount(file_size, block_size)) {
+  if (allow_prefetch && prefetch_blocks_ > 0 && cache_ &&
+      last_block_idx + 1 < GetBlockCount(file_size, block_size)) {
     uint32_t prefetch_start = last_block_idx + 1;
     uint32_t prefetch_end = std::min(
         prefetch_start + static_cast<uint32_t>(prefetch_blocks_),
         GetBlockCount(file_size, block_size));
     std::string path_copy = path;
-    std::async(std::launch::async, [this, path_copy, prefetch_start, prefetch_end,
-                                   block_size, file_size]() {
-      uint64_t off = static_cast<uint64_t>(prefetch_start) * block_size;
-      uint64_t len = static_cast<uint64_t>(prefetch_end - prefetch_start) * block_size;
-      if (off + len > file_size) len = file_size - off;
-      (void)Read(path_copy, off, len);
-    });
+    std::lock_guard<std::mutex> lock(prefetch_tasks_mutex_);
+    ReapCompletedPrefetchTasksLocked();
+    prefetch_tasks_.emplace_back(
+        std::async(std::launch::async, [this, path_copy, prefetch_start,
+                                        prefetch_end, block_size, file_size]() {
+          uint64_t off = static_cast<uint64_t>(prefetch_start) * block_size;
+          uint64_t len = static_cast<uint64_t>(prefetch_end - prefetch_start) *
+                         block_size;
+          if (off + len > file_size) len = file_size - off;
+          (void)ReadInternal(path_copy, off, len, nullptr, false);
+        }));
   }
 
   return result;
@@ -424,7 +459,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
       *ring_resp.add_workers() = w;
     }
     cached_ring_.Update(ring_resp);
-    ring_fetched_ = true;
+    ring_fetched_.store(true, std::memory_order_release);
   } else if (fi_result.status().code() == StatusCode::kNotFound) {
     auto create_result = master_client_->CreateFile(path);
     if (!create_result.ok()) {
@@ -444,7 +479,7 @@ Status FluxCacheClient::Write(const std::string& path, uint64_t offset,
           *ring_resp.add_workers() = w;
         }
         cached_ring_.Update(ring_resp);
-        ring_fetched_ = true;
+        ring_fetched_.store(true, std::memory_order_release);
       } else {
         return create_result.status();
       }

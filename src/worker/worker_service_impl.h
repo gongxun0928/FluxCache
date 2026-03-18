@@ -12,8 +12,9 @@ class PageStore;
 class HotspotTracker;
 class SlowRequestTracker;
 
-// WorkerService implementation. ReadPages uses PageStore + UFS; WritePages
-// returns UNIMPLEMENTED; Heartbeat returns empty response.
+// WorkerService implementation. ReadPages/BatchReadPages/WritePages are fully
+// implemented with PageStore + UFS write-through, and Heartbeat handles GC
+// reconciliation with master-provided orphan/misplaced block hints.
 class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
   WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size,

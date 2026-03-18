@@ -10,11 +10,14 @@
 #include "common/rpc/resilience_config.h"
 #include "common/rpc/retry_policy.h"
 #include "common/status.h"
+#include <atomic>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace fluxcache {
 
@@ -60,6 +63,10 @@ class FluxCacheClient {
 
  private:
   CircuitBreaker* GetOrCreateWorkerCircuitBreaker(const std::string& address);
+  StatusOr<std::string> ReadInternal(const std::string& path, uint64_t offset,
+                                     uint64_t size, bool* stale_out,
+                                     bool allow_prefetch);
+  void ReapCompletedPrefetchTasksLocked();
 
   std::string master_address_;
   size_t page_size_;
@@ -74,7 +81,9 @@ class FluxCacheClient {
       worker_circuit_breakers_;
   std::mutex worker_cbs_mutex_;
   CachedHashRing cached_ring_;
-  bool ring_fetched_ = false;
+  std::atomic<bool> ring_fetched_{false};
+  std::mutex prefetch_tasks_mutex_;
+  std::vector<std::future<void>> prefetch_tasks_;
   std::unique_ptr<ClientPageCache> cache_;
 
   std::unique_ptr<class MetricsRegistry> metrics_registry_;
