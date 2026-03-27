@@ -1,3 +1,4 @@
+.cache
 vcpkg
 vcpkg_installed
 vcpkg-manifest-install.log

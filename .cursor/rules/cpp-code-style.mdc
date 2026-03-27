@@ -10,13 +10,11 @@ alwaysApply: false
 
 - 使用 `#pragma once`，不使用传统 include guard。
 - include 顺序：标准库 → 第三方库 → 项目头文件。
-- 项目内 include 使用引号和相对路径。
 - 不使用异常；统一使用项目内错误返回与传播方式。
 - 枚举使用 `enum class`，并显式声明底层类型。
 - 独占所有权用 `std::unique_ptr`，共享所有权用 `std::shared_ptr`，禁止裸 `new/delete`。
 - 抽象类提供虚析构函数，派生类重写方法必须标注 `override`。
 - 并发成员优先使用 `mutable std::mutex` / `mutable std::shared_mutex`，原子变量使用花括号初始化。
-- 类成员按 `public` → `private` 排列，成员变量放在 `private`。
 
 ## 注释
 

@@ -15,6 +15,17 @@ alwaysApply: true
 - Review 输出格式统一遵循 `review-evidence-checklist.mdc`。
 - Testing 执行命令与失败处理统一遵循 `testing-gate-no-deploy.mdc`。
 - Design 阶段按分级选择模式：P2 使用 Lite，P1/P0 使用 Strict。
+- reviewer 介入强度按分级控制：`P0` 全阶段强制、`P1` 关键阶段强制、`P2` 仅高价值节点强制。
+- reviewer 应尽量独立于当前阶段产出者；若无法做到绝对独立，至少切换到 reviewer 视角重新审查。
+- 每个 Gate 的审查结论只能是：`通过`、`需修订`、`有条件通过`。
+- 若结论为 `需修订`，必须回退到当前 Gate 修复后再审，不得直接进入下一阶段。
+- 若结论为 `有条件通过`，必须记录豁免项、风险、补偿措施和补齐时点。
+
+## Reviewer 分级策略
+
+- **P0**：每个 Gate 都要 reviewer 审查后才能放行；高风险或关键决策建议双审。
+- **P1**：关键 Gate 强制 reviewer。至少覆盖 `Design`、`Coding/Review`、`Testing`；`Plan/Todo` 可独立审或合并审。
+- **P2**：默认轻流程。`Review` 必做，`Testing` 结果必检查；`Design/Plan/Todo` 仅在涉及接口、架构、数据模型或边界不清时引入 reviewer。
 
 ## 1. Design Gate
 
@@ -51,12 +62,13 @@ alwaysApply: true
 
 - 输入：代码改动、测试结果、评审证据。
 - 输出：评审结论、修订建议、闭环说明。
-- 放行：覆盖正确性/回归风险/测试充分性，高优问题已处理，输出满足 `review-evidence-checklist.mdc`。
+- reviewer：所有等级必经阶段。`P0/P1` 建议双审或至少保留升级路径；`P2` 可单审。
+- 放行：覆盖正确性/回归风险/测试充分性，高优问题已处理，输出满足 `review-evidence-checklist.mdc`，并记录审查结论。
 - 回退：补齐证据或修复高风险问题后重审。
 
 ## 6. Testing Gate（不含部署）
 
 - 输入：已通过 Review 的改动与测试计划。
 - 输出：构建/测试/lint 结果、回归影响结论、最终报告。
-- 放行：已按分级质量门验证，结果可复现，失败项已修复或正式豁免。
+- 放行：已按分级质量门验证，结果可复现，失败项已修复或正式豁免；需要 reviewer 的场景已记录审查结论。
 - 回退：按 `testing-gate-no-deploy.mdc` 修复重跑，或补齐豁免信息。

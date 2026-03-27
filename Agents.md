@@ -6,7 +6,7 @@
 2. **任务上下文**：`plan/issue-status.md`（状态真相源）→ `issues/<id>.md`（单 issue 详情）
 3. **设计依据**：`design/*.md`（按需读取，如 metadata-design、block-id-and-file-layout）
 4. **执行计划**：`plan/plan_*.md`、`plan/todo-*.md`（当前任务关联的 Plan/Todo）
-5. **规范**：`.cursor/rules/*.mdc`（阶段门禁、评审、测试、代码风格）
+5. **规范**：`.cursor/rules/*.mdc`（阶段门禁、评审、测试、代码风格；**写 C++ 时必读** `.cursor/rules/cpp-safety.mdc` 防 data race）
 
 ## 知识目录
 
