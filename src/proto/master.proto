@@ -15,6 +15,7 @@ service MasterService {
   rpc ListMounts(ListMountsRequest) returns (ListMountsResponse);
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
   rpc GetHashRing(GetHashRingRequest) returns (GetHashRingResponse);
+  rpc SubmitPrewarm(SubmitPrewarmRequest) returns (SubmitPrewarmResponse);
 }
 
 message GetFileInfoRequest {
@@ -80,6 +81,12 @@ message RegisterWorkerResponse {
 }
 
 message GetHashRingRequest {}
+
+message SubmitPrewarmRequest {
+  string path = 1;  // Logical path, e.g. /mnt/bucket1/dir1/
+}
+
+message SubmitPrewarmResponse {}
 
 message GetHashRingResponse {
   uint64 ring_version = 1;

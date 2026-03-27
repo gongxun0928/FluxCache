@@ -2,6 +2,8 @@
 
 #include "common/status.h"
 #include "common/types.h"
+#include <functional>
+#include <string>
 
 namespace fluxcache {
 
@@ -11,6 +13,11 @@ class MetricsRegistry;
 class PageStore;
 class TierManager;
 
+// Callback invoked before evicting a page. If it returns non-OK, eviction is
+// skipped (page is not deleted).
+using BeforeEvictCallback =
+    std::function<Status(PageId page_id, const std::string& page_data)>;
+
 // Evicts or demotes cold pages when capacity exceeds high watermark.
 // Uses EvictionPolicy::PickVictim for LRU victim selection.
 class TierEvictor {
@@ -19,6 +26,10 @@ class TierEvictor {
               MetaStore* meta_store, EvictionPolicy* eviction_policy,
               double high_watermark = 0.9,
               MetricsRegistry* metrics = nullptr);
+
+  void SetBeforeEvictCallback(BeforeEvictCallback cb) {
+    before_evict_cb_ = std::move(cb);
+  }
 
   // When used/total >= high_watermark, evicts or demotes one victim.
   // Returns OK on success, NotFound if nothing to evict, or other error.
@@ -31,6 +42,7 @@ class TierEvictor {
   EvictionPolicy* eviction_policy_;
   double high_watermark_;
   MetricsRegistry* metrics_;
+  BeforeEvictCallback before_evict_cb_;
 };
 
 }  // namespace fluxcache

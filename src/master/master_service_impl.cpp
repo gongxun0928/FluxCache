@@ -76,7 +76,11 @@ MasterServiceImpl::MasterServiceImpl(InodeTree* inode_tree,
       path_resolver_(inode_tree, &mount_table_),
       hash_ring_manager_([this](WorkerId id) {
         return worker_manager_.GetWorkerState(id);
-      }) {}
+      }) {
+  if (inode_tree) {
+    prewarm_queue_ = std::make_unique<PrewarmQueue>(&path_resolver_);
+  }
+}
 
 ::grpc::Status MasterServiceImpl::ToGrpcStatus(const Status& s) {
   if (s.ok()) return ::grpc::Status::OK;
@@ -309,6 +313,24 @@ nuraft::ptr<nuraft::buffer> MasterServiceImpl::ReplicateEntry(
   for (const auto& p : paths) {
     response->add_paths(p);
   }
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status MasterServiceImpl::SubmitPrewarm(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::SubmitPrewarmRequest* request,
+    ::fluxcache::proto::SubmitPrewarmResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "SubmitPrewarm");
+  RpcMetricsGuard _guard(metrics_, "SubmitPrewarm");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "SubmitPrewarm: path is required");
+  }
+  if (!prewarm_queue_) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "SubmitPrewarm: prewarm not available");
+  }
+  prewarm_queue_->Submit(request->path());
   return ::grpc::Status::OK;
 }
 

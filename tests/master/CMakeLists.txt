@@ -30,6 +30,10 @@ add_executable(mount_table_persistence_test mount_table_persistence_test.cpp)
 target_link_libraries(mount_table_persistence_test PRIVATE fluxcache_master GTest::gtest_main)
 add_test(NAME mount_table_persistence_test COMMAND mount_table_persistence_test)
 
+add_executable(prewarm_test prewarm_test.cpp)
+target_link_libraries(prewarm_test PRIVATE fluxcache_master fluxcache_proto fluxcache_ufs GTest::gtest_main)
+add_test(NAME prewarm_test COMMAND prewarm_test)
+
 if(FLUXCACHE_ENABLE_RAFT)
   add_executable(raft_state_machine_test raft_state_machine_test.cpp)
   target_link_libraries(raft_state_machine_test PRIVATE fluxcache_master fluxcache_proto GTest::gtest_main)

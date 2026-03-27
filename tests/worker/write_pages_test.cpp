@@ -68,7 +68,10 @@ TEST_F(WritePagesTest, WriteThenReadReturnsNewContentAndMtime) {
   EXPECT_EQ(read_resp.data(), kNewContent);
 }
 
-TEST_F(WritePagesTest, UfsWriteFailureReturnsErrorNoCacheUpdate) {
+// Write-back mode: WritePages does not write to UFS. It stores to PageStore
+// only. UFS write happens on eviction. So WritePages succeeds even when UFS
+// would fail (failure is deferred to eviction write-back).
+TEST_F(WritePagesTest, WriteBackModeSucceedsWithoutUfsWrite) {
   const std::string kContent(kPageSize, 'X');
   auto fake = std::make_unique<FakeUfs>();
   fake->AddFileWithContent("file.dat", kContent, 5000);
@@ -84,16 +87,16 @@ TEST_F(WritePagesTest, UfsWriteFailureReturnsErrorNoCacheUpdate) {
   req.set_data(kContent);
   req.set_ufs_uri("fake://wp-fail");
   req.set_ufs_path("file.dat");
+  req.set_expected_file_version(0);
 
   proto::WritePagesResponse resp;
   auto status = service_impl_->WritePages(&ctx, &req, &resp);
 
-  ASSERT_FALSE(status.ok());
-  EXPECT_EQ(status.error_code(), ::grpc::StatusCode::INTERNAL);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 
-  // PageStore should not have the page (no pseudo-success cache)
+  // PageStore has the page (write-back: no UFS write during WritePages)
   PageId id{block_id, 0};
-  EXPECT_FALSE(page_store_->Contains(id));
+  EXPECT_TRUE(page_store_->Contains(id));
 }
 
 TEST_F(WritePagesTest, InvalidRequestMissingBlockIdReturnsError) {

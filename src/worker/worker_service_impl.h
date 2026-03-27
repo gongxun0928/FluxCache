@@ -1,10 +1,14 @@
 #pragma once
 
 #include "common/metrics/metrics_registry.h"
+#include "common/status.h"
+#include "common/types.h"
 #include "worker.grpc.pb.h"
 #include <atomic>
 #include <cstddef>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 
 namespace fluxcache {
 
@@ -13,8 +17,9 @@ class HotspotTracker;
 class SlowRequestTracker;
 
 // WorkerService implementation. ReadPages/BatchReadPages/WritePages are fully
-// implemented with PageStore + UFS write-through, and Heartbeat handles GC
-// reconciliation with master-provided orphan/misplaced block hints.
+// implemented with PageStore + UFS write-back (eviction write-back), and
+// Heartbeat handles GC reconciliation with master-provided orphan/misplaced
+// block hints.
 class WorkerServiceImpl : public proto::WorkerService::Service {
  public:
   WorkerServiceImpl(PageStore* page_store, size_t page_size, size_t block_size,
@@ -40,6 +45,10 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
                             const ::fluxcache::proto::HeartbeatRequest* request,
                             ::fluxcache::proto::HeartbeatResponse* response) override;
 
+  // Writes back a page to UFS if it has a UFS mapping. Called by eviction
+  // write-back. Returns OK if written or no mapping; error on failure.
+  Status TryWriteBackToUfs(PageId id, const std::string& page_data);
+
  private:
   PageStore* page_store_;
   size_t page_size_;
@@ -48,6 +57,8 @@ class WorkerServiceImpl : public proto::WorkerService::Service {
   bool allow_stale_read_on_ufs_timeout_;
   SlowRequestTracker* slow_tracker_;
   HotspotTracker* hotspot_tracker_;
+  std::unordered_map<BlockId, std::pair<std::string, std::string>> block_to_ufs_;
+  mutable std::mutex block_ufs_mu_;
 };
 
 }  // namespace fluxcache

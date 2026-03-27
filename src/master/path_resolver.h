@@ -29,6 +29,9 @@ class PathResolver {
   std::vector<std::pair<std::string, InodeId>> ListDirectory(
       const std::string& logical_path);
 
+  // Recursively lists UFS directory and builds InodeTree. Used by prewarm.
+  Status PrewarmRecursive(const std::string& logical_path);
+
  private:
   static bool ParseUfsUri(const std::string& ufs_uri, std::string* scheme,
                           std::string* authority);

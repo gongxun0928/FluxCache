@@ -7,11 +7,13 @@
 #include "master/inode_tree.h"
 #include "master/mount_table.h"
 #include "master/path_resolver.h"
+#include "master/prewarm_queue.h"
 #include "master/worker_manager.h"
 #ifdef FLUXCACHE_ENABLE_RAFT
 #include "libnuraft/nuraft.hxx"
 #endif
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <set>
 
@@ -57,6 +59,9 @@ class MasterServiceImpl : public proto::MasterService::Service {
   ::grpc::Status ListMounts(::grpc::ServerContext* context,
                            const ::fluxcache::proto::ListMountsRequest* request,
                            ::fluxcache::proto::ListMountsResponse* response) override;
+  ::grpc::Status SubmitPrewarm(::grpc::ServerContext* context,
+                              const ::fluxcache::proto::SubmitPrewarmRequest* request,
+                              ::fluxcache::proto::SubmitPrewarmResponse* response) override;
 
   void CheckWorkerHealthAndUpdateRing(int64_t now_ms,
                                       int64_t heartbeat_timeout_ms,
@@ -114,6 +119,7 @@ class MasterServiceImpl : public proto::MasterService::Service {
   WorkerManager worker_manager_;
   HashRingManager hash_ring_manager_;
   MountTable mount_table_;
+  std::unique_ptr<PrewarmQueue> prewarm_queue_;
   mutable std::mutex topology_mu_;
   std::atomic<int64_t> worker_heartbeat_timeout_ms_{15000};
   std::atomic<int64_t> worker_suspect_grace_ms_{15000};

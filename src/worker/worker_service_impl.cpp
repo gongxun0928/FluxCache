@@ -424,46 +424,16 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
                           "data length must equal page_indices.size() * page_size");
   }
 
-  std::string scheme, authority;
-  if (!ParseUfsUri(ufs_uri, &scheme, &authority)) {
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
-                          "invalid ufs_uri format");
-  }
-
-  std::unique_ptr<UFS> ufs;
-  Status s = CreateUFS(scheme, authority, &ufs);
-  if (!s.ok()) {
-    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT, s.message());
-  }
-  if (!ufs) {
-    return ::grpc::Status(::grpc::StatusCode::INTERNAL, "CreateUFS returned null");
-  }
-
-  uint32_t block_index = GetBlockIndex(block_id);
-  uint64_t block_offset = static_cast<uint64_t>(block_index) * block_size_;
-
-  // Phase 1: Write all pages to UFS. On any failure, return error without
-  // updating PageStore (write-through atomic boundary).
-  for (size_t i = 0; i < num_pages; ++i) {
-    uint32_t pi = request->page_indices(static_cast<int>(i));
-    if (pi > 65535) {
-      return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
-                            "page_index exceeds uint16 max");
-    }
-    uint16_t page_index = static_cast<uint16_t>(pi);
-    uint64_t offset = block_offset + static_cast<uint64_t>(page_index) * page_size_;
-    std::string_view page_data(data.data() + i * page_size_, page_size_);
-
-    s = ufs->Write(ufs_path, offset, page_data);
-    if (!s.ok()) {
-      return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.message());
-    }
-  }
-
-  // Phase 2: UFS writes succeeded. Update PageStore with file_version from
-  // request (client provides it from GetFileInfo/CreateFile).
+  // Write-back mode: write to PageStore only. Store UFS mapping for eviction
+  // write-back. No UFS write here.
   uint64_t file_version = request->expected_file_version();
 
+  {
+    std::lock_guard<std::mutex> lock(block_ufs_mu_);
+    block_to_ufs_[block_id] = {ufs_uri, ufs_path};
+  }
+
+  Status s = Status::OK();
   for (size_t i = 0; i < num_pages; ++i) {
     uint32_t pi = request->page_indices(static_cast<int>(i));
     uint16_t page_index = static_cast<uint16_t>(pi);
@@ -508,6 +478,45 @@ WorkerServiceImpl::WorkerServiceImpl(PageStore* page_store, size_t page_size,
     response->add_audit_block_ids(id);
   }
   return ::grpc::Status::OK;
+}
+
+Status WorkerServiceImpl::TryWriteBackToUfs(PageId id,
+                                            const std::string& page_data) {
+  std::pair<std::string, std::string> ufs_pair;
+  {
+    std::lock_guard<std::mutex> lock(block_ufs_mu_);
+    auto it = block_to_ufs_.find(id.block_id);
+    if (it == block_to_ufs_.end()) {
+      return Status::OK();  // No UFS mapping, nothing to write back
+    }
+    ufs_pair = it->second;
+  }
+  const std::string& ufs_uri = ufs_pair.first;
+  const std::string& ufs_path = ufs_pair.second;
+  if (ufs_uri.empty() || ufs_path.empty()) {
+    return Status::OK();
+  }
+
+  std::string scheme, authority;
+  if (!ParseUfsUri(ufs_uri, &scheme, &authority)) {
+    return Status::InvalidArgument("invalid ufs_uri format");
+  }
+  std::unique_ptr<UFS> ufs;
+  Status s = CreateUFS(scheme, authority, &ufs);
+  if (!s.ok()) return s;
+  if (!ufs) {
+    return Status::IOError("CreateUFS returned null");
+  }
+
+  uint32_t block_index = GetBlockIndex(id.block_id);
+  uint64_t offset = static_cast<uint64_t>(block_index) * block_size_ +
+                    static_cast<uint64_t>(id.page_index) * page_size_;
+  s = ufs->Write(ufs_path, offset, page_data);
+  if (!s.ok()) return s;
+  if (metrics_) {
+    metrics_->IncCounter("fluxcache_ufs_writeback_total");
+  }
+  return Status::OK();
 }
 
 }  // namespace fluxcache

@@ -38,6 +38,17 @@ Status TierEvictor::EvictOne() {
 
   TierType current = *tier_opt;
 
+  auto do_evict = [this](const PageId& victim) -> Status {
+    if (before_evict_cb_) {
+      std::string page_data;
+      Status s = page_store_->GetPageRelaxed(victim, &page_data);
+      if (!s.ok()) return s;
+      s = before_evict_cb_(victim, page_data);
+      if (!s.ok()) return s;
+    }
+    return page_store_->DeletePage(victim);
+  };
+
   // Demote: Memory -> SSD, SSD -> HDD. Evict if target full or HDD.
   if (current == TierType::kMemory) {
     StorageTier* ssd = tier_manager_->GetTier(TierType::kSSD);
@@ -48,7 +59,7 @@ Status TierEvictor::EvictOne() {
       }
       return s;
     }
-    Status s = page_store_->DeletePage(*victim);
+    Status s = do_evict(*victim);
     if (s.ok() && metrics_) {
       metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
     }
@@ -64,7 +75,7 @@ Status TierEvictor::EvictOne() {
       }
       return s;
     }
-    Status s = page_store_->DeletePage(*victim);
+    Status s = do_evict(*victim);
     if (s.ok() && metrics_) {
       metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
     }
@@ -72,7 +83,7 @@ Status TierEvictor::EvictOne() {
   }
 
   // HDD: evict
-  Status s = page_store_->DeletePage(*victim);
+  Status s = do_evict(*victim);
   if (s.ok() && metrics_) {
     metrics_->IncCounter("fluxcache_evictions_total", "type", "eviction");
   }

@@ -6,6 +6,7 @@ set(MASTER_SOURCES
   master_service_impl.cpp
   mount_table.cpp
   path_resolver.cpp
+  prewarm_queue.cpp
   worker_manager.cpp
 )
 

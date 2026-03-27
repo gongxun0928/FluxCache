@@ -6,14 +6,17 @@
 #include "worker/cache/hotspot_tracker.h"
 #include "worker/page/page_store.h"
 #include "worker/storage/tier_manager.h"
+#include <atomic>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace fluxcache {
 
 class HttpMetricsServer;
 class MetricsRegistry;
+class TierEvictor;
 class WorkerServiceImpl;
 
 // gRPC server wrapper for Worker process. Manages lifecycle: Start, Shutdown.
@@ -35,17 +38,22 @@ class WorkerServer {
   static constexpr size_t kBlockSize = 64ULL * 1024 * 1024;  // 64MB
   static constexpr size_t kSsdCapacity = 1024ULL * 1024 * 1024;  // 1GB
 
+  void EvictionLoop();
+
   WorkerConfig config_;
   std::unique_ptr<TierManager> tier_manager_;
   std::unique_ptr<class MetaStore> meta_store_;
   std::unique_ptr<EvictionPolicy> eviction_policy_;
   std::unique_ptr<PageStore> page_store_;
+  std::unique_ptr<TierEvictor> tier_evictor_;
   std::unique_ptr<MetricsRegistry> metrics_registry_;
   std::unique_ptr<SlowRequestTracker> slow_request_tracker_;
   std::unique_ptr<HotspotTracker> hotspot_tracker_;
   std::unique_ptr<WorkerServiceImpl> service_impl_;
   std::unique_ptr<HttpMetricsServer> http_metrics_server_;
   std::unique_ptr<::grpc::Server> server_;
+  std::atomic<bool> eviction_stop_{false};
+  std::thread eviction_thread_;
 };
 
 }  // namespace fluxcache

@@ -1,6 +1,7 @@
 #include "master/path_resolver.h"
 #include "ufs/ufs_factory.h"
 
+#include <queue>
 #include <sstream>
 
 namespace fluxcache {
@@ -189,6 +190,68 @@ std::vector<std::pair<std::string, InodeId>> PathResolver::ListDirectory(
   if (!id.has_value()) return {};
 
   return tree_->ListDirectory(*id);
+}
+
+Status PathResolver::PrewarmRecursive(const std::string& logical_path) {
+  Status s = SyncFromUfs(logical_path);
+  if (!s.ok()) return s;
+
+  std::string ufs_uri, ufs_path;
+  s = mount_table_->Resolve(logical_path, &ufs_uri, &ufs_path);
+  if (!s.ok()) return s;
+
+  std::string scheme, authority;
+  if (!ParseUfsUri(ufs_uri, &scheme, &authority)) {
+    return Status::InvalidArgument("PathResolver: invalid ufs_uri");
+  }
+
+  std::unique_ptr<UFS> ufs;
+  s = CreateUFS(scheme, authority, &ufs);
+  if (!s.ok()) return s;
+  if (!ufs) return Status::IOError("PathResolver: failed to create UFS");
+
+  std::string base_logical = logical_path;
+  while (base_logical.size() > 1 && base_logical.back() == '/') {
+    base_logical.pop_back();
+  }
+  std::string base_ufs = ufs_path;
+  while (base_ufs.size() > 1 && base_ufs.back() == '/') {
+    base_ufs.pop_back();
+  }
+
+  std::queue<std::pair<std::string, std::string>> q;
+  q.push({base_logical, base_ufs});
+
+  while (!q.empty()) {
+    auto [cur_logical, cur_ufs] = q.front();
+    q.pop();
+
+    std::vector<FileStatus> entries;
+    s = ufs->List(cur_ufs, &entries);
+    if (!s.ok()) return s;
+
+    for (const auto& e : entries) {
+      std::string child_logical = JoinPath(cur_logical, e.path);
+      if (tree_->LookupPath(child_logical).has_value()) continue;
+
+      if (e.is_directory) {
+        if (!tree_->CreateDirectory(child_logical).has_value()) {
+          return Status::IOError("PathResolver: CreateDirectory failed");
+        }
+        std::string child_ufs =
+            cur_ufs.empty() ? e.path : cur_ufs + "/" + e.path;
+        q.push({child_logical, child_ufs});
+      } else {
+        if (!tree_->CreateFile(child_logical, e.size, kDefaultBlockSize,
+                              e.mtime_ms)
+                .has_value()) {
+          return Status::IOError("PathResolver: CreateFile failed");
+        }
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace fluxcache
