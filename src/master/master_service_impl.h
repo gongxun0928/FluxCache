@@ -63,6 +63,22 @@ class MasterServiceImpl : public proto::MasterService::Service {
                               const ::fluxcache::proto::SubmitPrewarmRequest* request,
                               ::fluxcache::proto::SubmitPrewarmResponse* response) override;
 
+  ::grpc::Status Mkdir(::grpc::ServerContext* context,
+                       const ::fluxcache::proto::MkdirRequest* request,
+                       ::fluxcache::proto::MkdirResponse* response) override;
+  ::grpc::Status Rmdir(::grpc::ServerContext* context,
+                       const ::fluxcache::proto::RmdirRequest* request,
+                       ::fluxcache::proto::RmdirResponse* response) override;
+  ::grpc::Status ListDir(::grpc::ServerContext* context,
+                         const ::fluxcache::proto::ListDirRequest* request,
+                         ::fluxcache::proto::ListDirResponse* response) override;
+  ::grpc::Status Rename(::grpc::ServerContext* context,
+                        const ::fluxcache::proto::RenameRequest* request,
+                        ::fluxcache::proto::RenameResponse* response) override;
+  ::grpc::Status Stat(::grpc::ServerContext* context,
+                      const ::fluxcache::proto::StatRequest* request,
+                      ::fluxcache::proto::StatResponse* response) override;
+
   void CheckWorkerHealthAndUpdateRing(int64_t now_ms,
                                       int64_t heartbeat_timeout_ms,
                                       int64_t suspect_grace_ms);

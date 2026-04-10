@@ -96,4 +96,45 @@ StatusOr<FileInfo> FluxCacheSDK::Stat(const std::string& path) {
   return info;
 }
 
+Status FluxCacheSDK::Mkdir(const std::string& path) {
+  auto result = impl_->client->GetMasterClient()->Mkdir(path);
+  if (!result.ok()) {
+    return result.status();
+  }
+  return Status::OK();
+}
+
+Status FluxCacheSDK::Rmdir(const std::string& path) {
+  return impl_->client->GetMasterClient()->Rmdir(path);
+}
+
+StatusOr<std::vector<DirEntry>> FluxCacheSDK::ListDirectory(
+    const std::string& path) {
+  auto result = impl_->client->GetMasterClient()->ListDir(path);
+  if (!result.ok()) {
+    return result.status();
+  }
+  std::vector<DirEntry> entries;
+  for (const auto& e : result.value().entries()) {
+    DirEntry de;
+    de.name = e.name();
+    de.info.inode_id = e.file_info().inode_id();
+    de.info.size = e.file_info().size();
+    de.info.is_directory = e.file_info().is_directory();
+    de.info.file_version = e.file_info().file_version();
+    entries.push_back(std::move(de));
+  }
+  return entries;
+}
+
+Status FluxCacheSDK::Rename(const std::string& src_path,
+                            const std::string& dst_path) {
+  return impl_->client->GetMasterClient()->Rename(src_path, dst_path);
+}
+
+bool FluxCacheSDK::Exists(const std::string& path) {
+  auto result = impl_->client->GetMasterClient()->Stat(path);
+  return result.ok();
+}
+
 }  // namespace fluxcache

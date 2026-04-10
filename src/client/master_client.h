@@ -61,6 +61,21 @@ class MasterClient {
   /// Register Worker. Returns worker_id. For test/setup.
   StatusOr<uint64_t> RegisterWorker(const std::string& host, uint16_t port);
 
+  /// Create directory at path. Returns FileInfo of the new directory.
+  StatusOr<proto::MkdirResponse> Mkdir(const std::string& path);
+
+  /// Remove empty directory at path.
+  Status Rmdir(const std::string& path);
+
+  /// List directory contents. Returns DirEntry list.
+  StatusOr<proto::ListDirResponse> ListDir(const std::string& path);
+
+  /// Rename src_path to dst_path. Overwrites dst if exists (non-dir or empty dir).
+  Status Rename(const std::string& src_path, const std::string& dst_path);
+
+  /// Stat path. Returns inode_id and FileInfo.
+  StatusOr<proto::StatResponse> Stat(const std::string& path);
+
  private:
   std::string GetMasterAddress() const;
   bool TryFollowLeaderHint(const grpc::Status& status);

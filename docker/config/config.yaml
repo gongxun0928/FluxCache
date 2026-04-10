@@ -1,0 +1,18 @@
+# FluxCache config for Docker Compose (S3/MinIO backend)
+# Master service
+
+fluxcache:
+  master:
+    host: "0.0.0.0"
+    port: 9090
+    db_path: "/var/lib/fluxcache/master/meta"
+    metrics_port: 9092
+  worker:
+    data_dir: "/var/lib/fluxcache/worker"
+    host: "0.0.0.0"
+    port: 9091
+    heartbeat_interval_ms: 3000
+    metrics_port: 9093
+  client:
+    master_host: "fluxcache-master"
+    master_port: 9090

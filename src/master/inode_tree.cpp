@@ -344,6 +344,107 @@ std::vector<std::pair<std::string, InodeId>> InodeTree::ListDirectory(InodeId di
   return result;
 }
 
+// TODO(Raft): RenameInode uses multiple independent RocksDB writes (delete dst,
+// delete src edge, put dst edge, put inode). If crash mid-way, metadata will be
+// inconsistent. Should use WriteBatch for atomicity before re-enabling Raft.
+bool InodeTree::RenameInode(const std::string& src_path,
+                             const std::string& dst_path) {
+  std::unique_lock lock(mu_);
+  if (!ready_) return false;
+
+  // Resolve src.
+  std::vector<std::string> src_parts = SplitPath(src_path);
+  if (src_parts.empty()) return false;  // Cannot rename root.
+  std::string src_name = src_parts.back();
+  std::vector<std::string> src_parent_parts(src_parts.begin(),
+                                             src_parts.end() - 1);
+
+  InodeId src_parent_id = kRootInodeId;
+  for (const auto& p : src_parent_parts) {
+    const DirNode* cur = GetDirNode(src_parent_id);
+    if (!cur) return false;
+    auto it = cur->children.find(p);
+    if (it == cur->children.end()) return false;
+    src_parent_id = it->second;
+  }
+
+  DirNode* src_parent = GetDirNode(src_parent_id);
+  if (!src_parent) return false;
+  auto src_it = src_parent->children.find(src_name);
+  if (src_it == src_parent->children.end()) return false;
+  InodeId src_id = src_it->second;
+
+  // Resolve dst parent.
+  std::vector<std::string> dst_parts = SplitPath(dst_path);
+  if (dst_parts.empty()) return false;  // Cannot rename to root.
+  std::string dst_name = dst_parts.back();
+  std::vector<std::string> dst_parent_parts(dst_parts.begin(),
+                                             dst_parts.end() - 1);
+
+  InodeId dst_parent_id = kRootInodeId;
+  for (const auto& p : dst_parent_parts) {
+    const DirNode* cur = GetDirNode(dst_parent_id);
+    if (!cur) return false;
+    auto it = cur->children.find(p);
+    if (it == cur->children.end()) return false;
+    dst_parent_id = it->second;
+  }
+
+  DirNode* dst_parent = GetDirNode(dst_parent_id);
+  if (!dst_parent) return false;
+
+  // Cannot rename into itself.
+  if (src_id == kRootInodeId) return false;
+  if (src_parent_id == dst_parent_id && src_name == dst_name) return false;
+
+  // Check if dst already exists — handle overwrite.
+  auto dst_it = dst_parent->children.find(dst_name);
+  if (dst_it != dst_parent->children.end()) {
+    InodeId dst_id = dst_it->second;
+    if (dst_id == src_id) return false;
+
+    auto dst_entry = store_->GetInode(dst_id);
+    if (!dst_entry) return false;
+
+    if (dst_entry->is_directory()) {
+      DirNode* dst_dir = GetDirNode(dst_id);
+      if (!dst_dir || !dst_dir->children.empty()) return false;
+      dirs_.erase(dst_id);
+    }
+
+    if (!store_->DeleteEdge(dst_parent_id, dst_name)) return false;
+    if (!store_->DeleteInode(dst_id)) return false;
+    dst_parent->children.erase(dst_it);
+  }
+
+  auto src_entry = store_->GetInode(src_id);
+  if (!src_entry) return false;
+
+  src_entry->parent_id = dst_parent_id;
+  src_entry->name = dst_name;
+  src_entry->modification_time_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count();
+
+  if (!store_->DeleteEdge(src_parent_id, src_name)) return false;
+  if (!store_->PutEdge(dst_parent_id, dst_name, src_id)) return false;
+  if (!store_->PutInode(src_id, *src_entry)) return false;
+
+  src_parent->children.erase(src_it);
+  dst_parent->children[dst_name] = src_id;
+
+  if (src_entry->is_directory()) {
+    auto dir_it = dirs_.find(src_id);
+    if (dir_it != dirs_.end()) {
+      dir_it->second.parent_id = dst_parent_id;
+      dir_it->second.name = dst_name;
+    }
+  }
+
+  return true;
+}
+
 std::optional<InodeEntry> InodeTree::GetInode(InodeId id) {
   std::shared_lock lock(mu_);
   if (!ready_) return std::nullopt;
