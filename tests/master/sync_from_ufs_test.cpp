@@ -1,32 +1,37 @@
+#include <grpcpp/grpcpp.h>
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "master.pb.h"
 #include "master/inode_tree.h"
 #include "master/master_service_impl.h"
 #include "master/mount_table.h"
 #include "master/path_resolver.h"
-#include "master.pb.h"
+#include "ufs/fake_ufs.h"
 #include "ufs/local_ufs.h"
 #include "ufs/ufs_factory.h"
 
-#include <algorithm>
-#include <filesystem>
-#include <grpcpp/grpcpp.h>
-#include <gtest/gtest.h>
-#include <cstdlib>
-#include <string>
-#include <vector>
-
 namespace fluxcache {
 
-namespace {
-}  // namespace
+namespace {}  // namespace
 
 class SyncFromUfsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     namespace fs = std::filesystem;
-    auto base = fs::temp_directory_path() / "fluxcache_sync_ufs_test";
-    fs::create_directories(base);
-    ufs_root_ = (base / "ufs").string() + "/";
-    db_path_ = (base / "db").string();
+    const auto unique_suffix = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    base_path_ = fs::temp_directory_path() /
+                 ("fluxcache_sync_ufs_test_" + unique_suffix);
+    fs::create_directories(base_path_);
+    ufs_root_ = (base_path_ / "ufs").string() + "/";
+    db_path_ = (base_path_ / "db").string();
     fs::create_directories(ufs_root_);
     ASSERT_FALSE(ufs_root_.empty());
 
@@ -36,10 +41,10 @@ class SyncFromUfsTest : public ::testing::Test {
 
   void TearDown() override {
     tree_.reset();
-    std::filesystem::remove_all(
-        std::filesystem::temp_directory_path() / "fluxcache_sync_ufs_test");
+    std::filesystem::remove_all(base_path_);
   }
 
+  std::filesystem::path base_path_;
   std::string ufs_root_;
   std::string db_path_;
   std::unique_ptr<InodeTree> tree_;
@@ -68,7 +73,7 @@ TEST_F(SyncFromUfsTest, SyncFromUfsResolveAndListWork) {
   ASSERT_TRUE(s.ok()) << s.message();
   ASSERT_GE(entries.size(), 1u);
   bool found = false;
-  for (const auto& e : entries) {
+  for (const auto &e : entries) {
     if (e.path == "file.txt") found = true;
   }
   EXPECT_TRUE(found);
@@ -115,7 +120,7 @@ TEST_F(SyncFromUfsTest, ListDirectoryReturnsSyncedEntries) {
 
   ASSERT_EQ(list.size(), 3u);
   std::vector<std::string> names;
-  for (const auto& [n, _] : list) names.push_back(n);
+  for (const auto &[n, _] : list) names.push_back(n);
   EXPECT_TRUE(std::find(names.begin(), names.end(), "a.txt") != names.end());
   EXPECT_TRUE(std::find(names.begin(), names.end(), "b") != names.end());
   EXPECT_TRUE(std::find(names.begin(), names.end(), "c.txt") != names.end());
@@ -135,6 +140,47 @@ TEST_F(SyncFromUfsTest, ResolveOrSyncFillsMissingInode) {
   auto id = resolver.ResolveOrSync("/mnt/missing.txt");
   ASSERT_TRUE(id.has_value());
   EXPECT_TRUE(tree_->LookupPath("/mnt/missing.txt").has_value());
+}
+
+TEST_F(SyncFromUfsTest, RenameSyncsDestinationParentBeforeCrossDirectoryMove) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->Mkdirs("dst");
+  fake->AddFile("src/file.txt", 7, 1234);
+  RegisterFakeUfsForTest("rename-dst-parent", std::move(fake));
+
+  MasterServiceImpl impl(tree_.get());
+  ::grpc::ServerContext ctx;
+  proto::MountRequest mount_req;
+  mount_req.set_path("/mnt");
+  mount_req.set_ufs_uri("fake://rename-dst-parent");
+  proto::MountResponse mount_resp;
+  ASSERT_TRUE(impl.Mount(&ctx, &mount_req, &mount_resp).ok());
+
+  ASSERT_TRUE(tree_->CreateDirectory("/mnt").has_value());
+  ASSERT_TRUE(tree_->LookupPath("/mnt").has_value());
+  ASSERT_TRUE(tree_->CreateDirectory("/mnt/src").has_value());
+  ASSERT_TRUE(tree_->LookupPath("/mnt/src").has_value());
+  ASSERT_TRUE(
+      tree_->CreateFile("/mnt/src/file.txt", 7, 4096, 1234).has_value());
+  ASSERT_TRUE(tree_->LookupPath("/mnt/src/file.txt").has_value());
+
+  EXPECT_TRUE(tree_->LookupPath("/mnt/src/file.txt").has_value());
+  EXPECT_FALSE(tree_->LookupPath("/mnt/dst").has_value());
+
+  proto::RenameRequest rename_req;
+  rename_req.set_src_path("/mnt/src/file.txt");
+  rename_req.set_dst_path("/mnt/dst/file.txt");
+  proto::RenameResponse rename_resp;
+
+  auto rename_status = impl.Rename(&ctx, &rename_req, &rename_resp);
+
+  ASSERT_TRUE(rename_status.ok()) << rename_status.error_message();
+  EXPECT_FALSE(tree_->LookupPath("/mnt/src/file.txt").has_value());
+  auto dst_id = tree_->LookupPath("/mnt/dst/file.txt");
+  ASSERT_TRUE(dst_id.has_value());
+  auto dst_entry = tree_->GetInode(*dst_id);
+  ASSERT_TRUE(dst_entry.has_value());
+  EXPECT_FALSE(dst_entry->is_directory());
 }
 
 TEST_F(SyncFromUfsTest, UnmountWithActiveInodesReturnsError) {
@@ -163,7 +209,8 @@ TEST_F(SyncFromUfsTest, UnmountWithActiveInodesReturnsError) {
 
   EXPECT_FALSE(unmount_status.ok())
       << "Unmount should fail when mount has active inodes";
-  EXPECT_EQ(unmount_status.error_code(), ::grpc::StatusCode::FAILED_PRECONDITION);
+  EXPECT_EQ(unmount_status.error_code(),
+            ::grpc::StatusCode::FAILED_PRECONDITION);
   EXPECT_NE(std::string(unmount_status.error_message()).find("active inodes"),
             std::string::npos);
 }

@@ -1089,8 +1089,12 @@ bool MasterServiceImpl::RestoreWorkerTopologySnapshot(
 #endif
 
   // TODO(Raft): Add Raft journal entry + ReplicateEntry path for Rename.
-  // Ensure src parent directory is synced so the inode exists in InodeTree.
+  // Ensure both parents are synced so RenameInode can resolve src and dst.
   Status sync_status = path_resolver_.SyncFromUfs(Dirname(request->src_path()));
+  if (!sync_status.ok()) {
+    return ToGrpcStatus(sync_status);
+  }
+  sync_status = path_resolver_.SyncFromUfs(Dirname(request->dst_path()));
   if (!sync_status.ok()) {
     return ToGrpcStatus(sync_status);
   }
