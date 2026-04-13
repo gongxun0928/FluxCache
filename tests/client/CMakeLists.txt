@@ -9,6 +9,25 @@ target_link_libraries(client_test PRIVATE fluxcache_client fluxcache_common
                                          fluxcache_proto GTest::gtest_main)
 add_test(NAME client_test COMMAND client_test)
 
+add_executable(master_client_status_test master_client_status_test.cpp)
+target_include_directories(master_client_status_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(master_client_status_test PRIVATE fluxcache_client
+                                                 fluxcache_common
+                                                 fluxcache_proto
+                                                 GTest::gtest_main)
+add_test(NAME master_client_status_test COMMAND master_client_status_test)
+
+if(FLUXCACHE_HAS_FUSE)
+  add_executable(fuse_status_test fuse_status_test.cpp)
+  target_include_directories(fuse_status_test PRIVATE ${CMAKE_SOURCE_DIR}/src
+                                                      ${FUSE3_INCLUDE_DIRS})
+  target_link_libraries(fuse_status_test PRIVATE fluxcache_common
+                                                GTest::gtest_main)
+  target_compile_definitions(fuse_status_test PRIVATE FUSE_USE_VERSION=31
+                                                     _FILE_OFFSET_BITS=64)
+  add_test(NAME fuse_status_test COMMAND fuse_status_test)
+endif()
+
 if(FLUXCACHE_ENABLE_RAFT)
   add_executable(master_client_raft_test master_client_raft_test.cpp)
   target_include_directories(master_client_raft_test PRIVATE ${CMAKE_SOURCE_DIR}/src)

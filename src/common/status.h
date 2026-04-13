@@ -13,6 +13,7 @@ enum class StatusCode : uint8_t {
   kInvalidArgument,
   kResourceExhausted,
   kUnavailable,
+  kDirectoryNotEmpty,
 };
 
 class Status {
@@ -21,6 +22,7 @@ class Status {
   static Status NotFound(const char* msg = nullptr);
   static Status AlreadyExists(const char* msg = nullptr);
   static Status IOError(const char* msg = nullptr);
+  static Status DirectoryNotEmpty(const char* msg = nullptr);
   static Status InvalidArgument(const char* msg = nullptr);
   static Status Unavailable(const char* msg = nullptr);
   static Status ResourceExhausted(const char* msg = nullptr);

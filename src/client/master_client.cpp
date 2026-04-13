@@ -1,9 +1,12 @@
 #include "client/master_client.h"
+
+#include <grpcpp/client_context.h>
+
+#include <chrono>
+
 #include "common/metrics/metrics_registry.h"
 #include "master.grpc.pb.h"
 #include "worker/registration_util.h"
-#include <chrono>
-#include <grpcpp/client_context.h>
 
 namespace fluxcache {
 
@@ -40,7 +43,8 @@ bool MasterClient::TryFollowLeaderHint(const grpc::Status& status) {
 namespace {
 
 StatusOr<fluxcache::proto::GetHashRingResponse> DoGetHashRing(
-    fluxcache::ChannelPool* pool, const std::string& address, int deadline_sec) {
+    fluxcache::ChannelPool* pool, const std::string& address,
+    int deadline_sec) {
   auto channel = pool->GetChannel(address);
   if (!channel) {
     return fluxcache::Status::Unavailable("failed to get channel for master");
@@ -77,7 +81,8 @@ StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
   auto result = ExecuteWithRetry<proto::GetHashRingResponse>(
-      p, [this, deadline]() {
+      p,
+      [this, deadline]() {
         return DoGetHashRing(pool_, GetMasterAddress(), deadline);
       },
       metrics_, "master");
@@ -134,7 +139,8 @@ StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
   auto result = ExecuteWithRetry<proto::GetFileInfoResponse>(
-      p, [this, path, deadline]() {
+      p,
+      [this, path, deadline]() {
         return DoGetFileInfo(pool_, GetMasterAddress(), deadline, path);
       },
       metrics_, "master");
@@ -230,6 +236,9 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size) {
   }
   if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
     return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
   }
   return Status::IOError(grpc_status.error_message().c_str());
 }
@@ -477,6 +486,9 @@ StatusOr<proto::MkdirResponse> MasterClient::Mkdir(const std::string& path) {
   if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
     return Status::NotFound(grpc_status.error_message().c_str());
   }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
+  }
   return Status::IOError(grpc_status.error_message().c_str());
 }
 
@@ -519,10 +531,14 @@ Status MasterClient::Rmdir(const std::string& path) {
   if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
     return Status::NotFound(grpc_status.error_message().c_str());
   }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
+  }
   return Status::IOError(grpc_status.error_message().c_str());
 }
 
-StatusOr<proto::ListDirResponse> MasterClient::ListDir(const std::string& path) {
+StatusOr<proto::ListDirResponse> MasterClient::ListDir(
+    const std::string& path) {
   if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
     return Status::Unavailable("circuit breaker open");
   }

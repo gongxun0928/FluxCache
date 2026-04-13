@@ -1,11 +1,14 @@
 #include "client/fuse/fuse_ops.h"
+
+#include <fcntl.h>
+
+#include <cstring>
+#include <memory>
+#include <string>
+
 #include "client/sdk/fluxcache_sdk.h"
 #include "client/sdk/types.h"
 #include "common/status.h"
-#include <cstring>
-#include <fcntl.h>
-#include <memory>
-#include <string>
 
 namespace fluxcache {
 
@@ -33,6 +36,8 @@ int ToErrno(StatusCode c) {
       return -ENOENT;
     case StatusCode::kAlreadyExists:
       return -EEXIST;
+    case StatusCode::kDirectoryNotEmpty:
+      return -ENOTEMPTY;
     case StatusCode::kInvalidArgument:
       return -EINVAL;
     case StatusCode::kIOError:
@@ -48,7 +53,8 @@ FuseContext* GetContext() {
   return ctx ? static_cast<FuseContext*>(ctx->private_data) : nullptr;
 }
 
-int fc_getattr(const char* path, struct stat* stbuf, struct fuse_file_info* fi) {
+int fc_getattr(const char* path, struct stat* stbuf,
+               struct fuse_file_info* fi) {
   (void)fi;
   FuseContext* ctx = GetContext();
   if (!ctx || !ctx->sdk || !stbuf) return -EIO;
@@ -163,8 +169,7 @@ int fc_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
   return 0;
 }
 
-int fc_rename(const char* oldpath, const char* newpath,
-              unsigned int flags) {
+int fc_rename(const char* oldpath, const char* newpath, unsigned int flags) {
   // RENAME_EXCHANGE is not supported (swap semantics).
   if (flags & RENAME_EXCHANGE) return -ENOTSUP;
 
