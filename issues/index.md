@@ -213,8 +213,42 @@ flowchart TD
 | `P1-14` | 已拆为 `P1-14A/B/C/D` |
 | `P1-15` | 已拆为 `P1-15A/B/C/D` |
 
+## Phase K：生产就绪增强
+
+目标：补齐 FUSE/SDK 完整能力、引入 Docker 集成测试环境、评估 POSIX 兼容性。
+
+| Issue | 标题 | 依赖 | 分级 |
+|---|---|---|---|
+| [P5-01](./P5-01-master-proto-namespace.md) | Master proto 命名空间 RPC 扩展 | 无 | P1 |
+| [P5-02](./P5-02-sdk-namespace-ops.md) | C++ SDK 完整命名空间操作 | P5-01 | P1 |
+| [P5-03](./P5-03-fuse-posix-ops.md) | FUSE 完整 POSIX 操作 | P5-02 | P1 |
+| [P5-04](./P5-04-docker-compose-integration.md) | Docker-Compose S3 集成测试环境 | 无 | P1 |
+| [P5-05](./P5-05-pjdfstest.md) | pjdfstest POSIX 兼容性基线评估 | P5-03, P5-04 | P2 |
+
+### 依赖链
+
+```
+P5-01 (Master proto) → P5-02 (SDK) → P5-03 (FUSE) → P5-05 (pjdfstest)
+                                             ↑
+P5-04 (Docker-Compose) ──────────────────────┘ (可并行)
+```
+
+### 关键发现
+
+- `InodeTree` 已有完整目录操作（CreateDirectory/DeleteInode/ListDirectory），但 Master RPC 未暴露
+- `common.proto` 的 `FileInfo` 已有 `is_directory` 字段
+- Journal entries 已有 `CreateDirectoryOp`
+- **P5-01 中 Mkdir/Rmdir/ListDir/Stat 为 wire-up，只有 Rename 需要新逻辑**
+
+### Scope 决策
+
+- 硬链接（link）：暂不纳入
+- 文件锁（flock/lockf）：暂不纳入
+- atime：近似处理，保证 mtime/ctime
+- Docker 后端：MinIO（S3 兼容性最成熟）
+
 ## 当前不再推荐的做法
 
-- 不再使用 `P1-05 / P1-08 / P1-14 / P1-15` 这类“单 issue 覆盖多组件主线实现”的拆法。
+- 不再使用 `P1-05 / P1-08 / P1-14 / P1-15` 这类”单 issue 覆盖多组件主线实现”的拆法。
 - 不再把 `README` 中的 `FUSE / S3 / HDFS / MetaStore / HA` 视为当前已稳定核心能力。
-- 不再把“未访问 UFS”“真实 mtime 自然变化”等难以稳定验证的说法写入验收标准。
+- 不再把”未访问 UFS””真实 mtime 自然变化”等难以稳定验证的说法写入验收标准。

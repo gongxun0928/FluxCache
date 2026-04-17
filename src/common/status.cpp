@@ -17,6 +17,11 @@ Status Status::IOError(const char* msg) {
   return Status(StatusCode::kIOError, msg);
 }
 
+Status Status::DirectoryNotEmpty(const char* msg) {
+  return Status(StatusCode::kDirectoryNotEmpty,
+                msg ? msg : "directory not empty");
+}
+
 Status Status::InvalidArgument(const char* msg) {
   return Status(StatusCode::kInvalidArgument, msg ? msg : "invalid argument");
 }

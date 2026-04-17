@@ -157,3 +157,13 @@ created ──→ suspended  (方案风险过高，暂停待重新评估)
 | P4-01 | MountTable RocksDB 持久化 | P1 | 无 | completed | | 2026-03-16 InodeStore mounts CF + MountTable 绑定 + 4 个持久化测试通过 |
 | P4-02 | Master HA via NuRaft | P0 | P4-01 | suspended | | 默认不编译(FLUXCACHE_ENABLE_RAFT=OFF)；原型存在已知问题，HA 方案待重新评估 |
 | P4-03 | 多 Worker 部署测试脚本 | P2 | 无 | completed | | 2026-03-16 进程内 8 测试 + shell 部署脚本 |
+
+## Phase K：生产就绪增强
+
+| Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
+|---|---|---|---|---|---|---|
+| P5-01 | Master proto 命名空间 RPC 扩展 | P1 | 无 | in_progress | | @Dev 执行；Mkdir/Rmdir/ListDir/Stat wire-up，Rename 需新逻辑 |
+| P5-02 | C++ SDK 完整命名空间操作 | P1 | P5-01 | created | | |
+| P5-03 | FUSE 完整 POSIX 操作 | P1 | P5-02 | created | | |
+| P5-04 | Docker-Compose S3 集成测试环境 | P1 | 无 | in_progress | | @Architect 执行；docker/ 目录已创建 |
+| P5-05 | pjdfstest POSIX 兼容性基线评估 | P2 | P5-03, P5-04 | created | | |

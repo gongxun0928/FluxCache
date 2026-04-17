@@ -1,11 +1,14 @@
 #include "client/fuse/fuse_ops.h"
+
+#include <fcntl.h>
+
+#include <cstring>
+#include <memory>
+#include <string>
+
 #include "client/sdk/fluxcache_sdk.h"
 #include "client/sdk/types.h"
 #include "common/status.h"
-#include <cstring>
-#include <fcntl.h>
-#include <memory>
-#include <string>
 
 namespace fluxcache {
 
@@ -33,6 +36,8 @@ int ToErrno(StatusCode c) {
       return -ENOENT;
     case StatusCode::kAlreadyExists:
       return -EEXIST;
+    case StatusCode::kDirectoryNotEmpty:
+      return -ENOTEMPTY;
     case StatusCode::kInvalidArgument:
       return -EINVAL;
     case StatusCode::kIOError:
@@ -48,7 +53,8 @@ FuseContext* GetContext() {
   return ctx ? static_cast<FuseContext*>(ctx->private_data) : nullptr;
 }
 
-int fc_getattr(const char* path, struct stat* stbuf, struct fuse_file_info* fi) {
+int fc_getattr(const char* path, struct stat* stbuf,
+               struct fuse_file_info* fi) {
   (void)fi;
   FuseContext* ctx = GetContext();
   if (!ctx || !ctx->sdk || !stbuf) return -EIO;
@@ -163,52 +169,121 @@ int fc_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
   return 0;
 }
 
-// Unsupported operations: return -ENOTSUP explicitly
-int fc_rename(const char* /*oldpath*/, const char* /*newpath*/,
-              unsigned int /*flags*/) {
-  return -ENOTSUP;
+int fc_rename(const char* oldpath, const char* newpath, unsigned int flags) {
+  // RENAME_EXCHANGE is not supported (swap semantics).
+  if (flags & RENAME_EXCHANGE) return -ENOTSUP;
+
+  FuseContext* ctx = GetContext();
+  if (!ctx || !ctx->sdk) return -EIO;
+
+  std::string src = ToSdkPath(ctx, oldpath);
+  std::string dst = ToSdkPath(ctx, newpath);
+  if (src.empty() || dst.empty()) return -EINVAL;
+
+  // RENAME_NOREPLACE: fail if dst already exists.
+  if (flags & RENAME_NOREPLACE) {
+    auto stat = ctx->sdk->Stat(dst);
+    if (stat.ok()) return -EEXIST;
+  }
+
+  auto status = ctx->sdk->Rename(src, dst);
+  return ToErrno(status.code());
 }
-int fc_link(const char* /*oldpath*/, const char* /*newpath*/) {
-  return -ENOTSUP;
+
+int fc_unlink(const char* path) {
+  FuseContext* ctx = GetContext();
+  if (!ctx || !ctx->sdk) return -EIO;
+
+  std::string sdk_path = ToSdkPath(ctx, path);
+  if (sdk_path.empty()) return -EINVAL;
+
+  auto status = ctx->sdk->Delete(sdk_path);
+  return ToErrno(status.code());
 }
-int fc_symlink(const char* /*target*/, const char* /*path*/) {
-  return -ENOTSUP;
+
+int fc_mkdir(const char* path, mode_t /*mode*/) {
+  FuseContext* ctx = GetContext();
+  if (!ctx || !ctx->sdk) return -EIO;
+
+  std::string sdk_path = ToSdkPath(ctx, path);
+  if (sdk_path.empty()) return -EINVAL;
+
+  auto status = ctx->sdk->Mkdir(sdk_path);
+  return ToErrno(status.code());
 }
-int fc_readlink(const char* /*path*/, char* /*buf*/, size_t /*size*/) {
-  return -ENOTSUP;
+
+int fc_rmdir(const char* path) {
+  FuseContext* ctx = GetContext();
+  if (!ctx || !ctx->sdk) return -EIO;
+
+  std::string sdk_path = ToSdkPath(ctx, path);
+  if (sdk_path.empty()) return -EINVAL;
+
+  auto status = ctx->sdk->Rmdir(sdk_path);
+  return ToErrno(status.code());
 }
-int fc_mkdir(const char* /*path*/, mode_t /*mode*/) { return -ENOTSUP; }
-int fc_rmdir(const char* /*path*/) { return -ENOTSUP; }
-int fc_readdir(const char* /*path*/, void* /*buf*/, fuse_fill_dir_t /*filler*/,
+
+int fc_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
                off_t /*offset*/, struct fuse_file_info* /*fi*/,
                enum fuse_readdir_flags /*flags*/) {
+  FuseContext* ctx = GetContext();
+  if (!ctx || !ctx->sdk || !buf || !filler) return -EIO;
+
+  std::string sdk_path = ToSdkPath(ctx, path);
+  if (sdk_path.empty()) return -EINVAL;
+
+  auto result = ctx->sdk->ListDirectory(sdk_path);
+  if (!result.ok()) {
+    return ToErrno(result.status().code());
+  }
+
+  // Always include . and ..
+  filler(buf, ".", nullptr, 0, static_cast<fuse_fill_dir_flags>(0));
+  filler(buf, "..", nullptr, 0, static_cast<fuse_fill_dir_flags>(0));
+
+  for (const auto& entry : result.value()) {
+    filler(buf, entry.name.c_str(), nullptr, 0,
+           static_cast<fuse_fill_dir_flags>(0));
+  }
+
+  return 0;
+}
+
+int fc_truncate(const char* path, off_t size, struct fuse_file_info* /*fi*/) {
+  // Phase 1: truncate is not fully supported by the backend.
+  // For size=0 on an existing file, we accept it as a no-op to make
+  // common tools (cp, mv) happy.
+  if (size == 0) {
+    FuseContext* ctx = GetContext();
+    if (!ctx || !ctx->sdk) return -EIO;
+    std::string sdk_path = ToSdkPath(ctx, path);
+    if (sdk_path.empty()) return -EINVAL;
+    // Verify path exists.
+    auto result = ctx->sdk->Stat(sdk_path);
+    if (!result.ok()) return ToErrno(result.status().code());
+    return 0;
+  }
   return -ENOTSUP;
 }
+
 int fc_chmod(const char* /*path*/, mode_t /*mode*/,
              struct fuse_file_info* /*fi*/) {
-  return -ENOTSUP;
+  // Cache filesystem does not persist permission changes in Phase 1.
+  return 0;  // Silently accept.
 }
+
 int fc_chown(const char* /*path*/, uid_t /*uid*/, gid_t /*gid*/,
              struct fuse_file_info* /*fi*/) {
-  return -ENOTSUP;
+  // Cache filesystem does not persist ownership changes in Phase 1.
+  return 0;  // Silently accept.
 }
-int fc_utimens(const char* /*path*/, const struct timespec* /*ts*/,
-              struct fuse_file_info* /*fi*/) {
-  return -ENOTSUP;
-}
-int fc_setxattr(const char* /*path*/, const char* /*name*/,
-               const char* /*value*/, size_t /*size*/, int /*flags*/) {
-  return -ENOTSUP;
-}
-int fc_getxattr(const char* /*path*/, const char* /*name*/, char* /*value*/,
-                size_t /*size*/) {
-  return -ENOTSUP;
-}
-int fc_listxattr(const char* /*path*/, char* /*list*/, size_t /*size*/) {
-  return -ENOTSUP;
-}
-int fc_removexattr(const char* /*path*/, const char* /*name*/) {
-  return -ENOTSUP;
+
+int fc_utimens(const char* path, const struct timespec* /*ts*/,
+               struct fuse_file_info* /*fi*/) {
+  // Accept utimens as a no-op for compatibility. mtime updates are
+  // handled internally by the cache system.
+  (void)path;
+  return 0;
 }
 
 }  // namespace
@@ -222,19 +297,14 @@ void RegisterFluxCacheFuseOps(struct fuse_operations* ops) {
   ops->write = fc_write;
   ops->create = fc_create;
   ops->rename = fc_rename;
-  ops->link = fc_link;
-  ops->symlink = fc_symlink;
-  ops->readlink = fc_readlink;
+  ops->unlink = fc_unlink;
   ops->mkdir = fc_mkdir;
   ops->rmdir = fc_rmdir;
   ops->readdir = fc_readdir;
+  ops->truncate = fc_truncate;
   ops->chmod = fc_chmod;
   ops->chown = fc_chown;
   ops->utimens = fc_utimens;
-  ops->setxattr = fc_setxattr;
-  ops->getxattr = fc_getxattr;
-  ops->listxattr = fc_listxattr;
-  ops->removexattr = fc_removexattr;
 }
 
 std::string FusePathToSdkPath(const FuseContext* ctx, const char* fuse_path) {

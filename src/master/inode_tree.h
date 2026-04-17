@@ -63,6 +63,11 @@ class InodeTree {
   // Get inode entry for path (for FileInfo).
   std::optional<InodeEntry> GetInode(InodeId id);
 
+  // Rename inode: move src_path to dst_path.
+  // Supports cross-directory moves and overwriting existing dst (if non-dir or empty dir).
+  // Returns true on success.
+  bool RenameInode(const std::string& src_path, const std::string& dst_path);
+
   // Update inode size and increment file_version. Used by CompleteFile.
   // Returns false if inode not found or is directory.
   bool UpdateInodeSizeAndIncrementVersion(InodeId id, uint64_t size);

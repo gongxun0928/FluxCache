@@ -1,5 +1,7 @@
 #include "client/cache/client_page_cache.h"
 
+#include <mutex>
+
 namespace fluxcache {
 
 ClientPageCache::ClientPageCache(size_t max_size_bytes)

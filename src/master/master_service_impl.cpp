@@ -915,4 +915,234 @@ bool MasterServiceImpl::RestoreWorkerTopologySnapshot(
   return true;
 }
 
+// --- Directory and namespace operations ---
+
+::grpc::Status MasterServiceImpl::Mkdir(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::MkdirRequest* request,
+    ::fluxcache::proto::MkdirResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "Mkdir");
+  RpcMetricsGuard _guard(metrics_, "Mkdir");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Mkdir: path is required");
+  }
+  const std::string& path = request->path();
+  if (path[0] != '/' || path == "/") {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Mkdir: path must be absolute and not root");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "Mkdir: InodeTree not ready");
+  }
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  if (IsRaftEnabled() && !IsLeader()) {
+    return NotLeaderError();
+  }
+#endif
+
+  // TODO(Raft): Add Raft journal entry + ReplicateEntry path for Mkdir when
+  // FLUXCACHE_ENABLE_RAFT is re-enabled. Currently goes directly to InodeTree.
+  // Ensure parent directory is synced from UFS (creates mount point inodes).
+  Status sync_status = path_resolver_.SyncFromUfs(Dirname(path));
+  if (!sync_status.ok()) {
+    return ToGrpcStatus(sync_status);
+  }
+
+  auto inode_id = inode_tree_->CreateDirectory(path);
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::ALREADY_EXISTS,
+                          "Mkdir: directory already exists or parent not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (entry) {
+    auto* fi = response->mutable_file_info();
+    fi->set_inode_id(*inode_id);
+    fi->set_size(entry->size);
+    fi->set_block_size(entry->block_size);
+    fi->set_file_version(entry->file_version);
+    fi->set_is_directory(entry->is_directory());
+  }
+
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status MasterServiceImpl::Rmdir(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::RmdirRequest* request,
+    ::fluxcache::proto::RmdirResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "Rmdir");
+  RpcMetricsGuard _guard(metrics_, "Rmdir");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Rmdir: path is required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "Rmdir: InodeTree not ready");
+  }
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  if (IsRaftEnabled() && !IsLeader()) {
+    return NotLeaderError();
+  }
+#endif
+
+  // TODO(Raft): Add Raft journal entry + ReplicateEntry path for Rmdir.
+  auto inode_id = path_resolver_.ResolveOrSync(request->path());
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "Rmdir: path not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "Rmdir: inode not found");
+  }
+  if (!entry->is_directory()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Rmdir: not a directory");
+  }
+
+  if (!inode_tree_->DeleteInode(*inode_id)) {
+    return ::grpc::Status(::grpc::StatusCode::FAILED_PRECONDITION,
+                          "Rmdir: directory not empty or delete failed");
+  }
+
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status MasterServiceImpl::ListDir(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::ListDirRequest* request,
+    ::fluxcache::proto::ListDirResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "ListDir");
+  RpcMetricsGuard _guard(metrics_, "ListDir");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "ListDir: path is required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "ListDir: InodeTree not ready");
+  }
+
+  auto inode_id = path_resolver_.ResolveOrSync(request->path());
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "ListDir: path not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "ListDir: inode not found");
+  }
+  if (!entry->is_directory()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "ListDir: not a directory");
+  }
+
+  auto children = inode_tree_->ListDirectory(*inode_id);
+  for (const auto& [name, child_id] : children) {
+    auto* dir_entry = response->add_entries();
+    dir_entry->set_name(name);
+    dir_entry->set_inode_id(child_id);
+
+    auto child_entry = inode_tree_->GetInode(child_id);
+    if (child_entry) {
+      auto* fi = dir_entry->mutable_file_info();
+      fi->set_inode_id(child_id);
+      fi->set_size(child_entry->size);
+      fi->set_block_size(child_entry->block_size);
+      fi->set_file_version(child_entry->file_version);
+      fi->set_is_directory(child_entry->is_directory());
+    }
+  }
+
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status MasterServiceImpl::Rename(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::RenameRequest* request,
+    ::fluxcache::proto::RenameResponse* /*response*/) {
+  if (metrics_) metrics_->IncCounter("master", "Rename");
+  RpcMetricsGuard _guard(metrics_, "Rename");
+  if (!request || request->src_path().empty() || request->dst_path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Rename: src_path and dst_path are required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "Rename: InodeTree not ready");
+  }
+
+#ifdef FLUXCACHE_ENABLE_RAFT
+  if (IsRaftEnabled() && !IsLeader()) {
+    return NotLeaderError();
+  }
+#endif
+
+  // TODO(Raft): Add Raft journal entry + ReplicateEntry path for Rename.
+  // Ensure both parents are synced so RenameInode can resolve src and dst.
+  Status sync_status = path_resolver_.SyncFromUfs(Dirname(request->src_path()));
+  if (!sync_status.ok()) {
+    return ToGrpcStatus(sync_status);
+  }
+  sync_status = path_resolver_.SyncFromUfs(Dirname(request->dst_path()));
+  if (!sync_status.ok()) {
+    return ToGrpcStatus(sync_status);
+  }
+
+  if (!inode_tree_->RenameInode(request->src_path(), request->dst_path())) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Rename: failed (src not found, dst is non-empty dir, or invalid paths)");
+  }
+
+  return ::grpc::Status::OK;
+}
+
+::grpc::Status MasterServiceImpl::Stat(
+    ::grpc::ServerContext* /*context*/,
+    const ::fluxcache::proto::StatRequest* request,
+    ::fluxcache::proto::StatResponse* response) {
+  if (metrics_) metrics_->IncCounter("master", "Stat");
+  RpcMetricsGuard _guard(metrics_, "Stat");
+  if (!request || request->path().empty()) {
+    return ::grpc::Status(::grpc::StatusCode::INVALID_ARGUMENT,
+                          "Stat: path is required");
+  }
+  if (!inode_tree_ || !inode_tree_->is_ready()) {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE,
+                          "Stat: InodeTree not ready");
+  }
+
+  auto inode_id = path_resolver_.ResolveOrSync(request->path());
+  if (!inode_id.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "Stat: path not found");
+  }
+
+  auto entry = inode_tree_->GetInode(*inode_id);
+  if (!entry.has_value()) {
+    return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                          "Stat: inode not found");
+  }
+
+  response->set_inode_id(*inode_id);
+  auto* fi = response->mutable_file_info();
+  fi->set_inode_id(*inode_id);
+  fi->set_size(entry->size);
+  fi->set_block_size(entry->block_size);
+  fi->set_file_version(entry->file_version);
+  fi->set_is_directory(entry->is_directory());
+
+  return ::grpc::Status::OK;
+}
+
 }  // namespace fluxcache

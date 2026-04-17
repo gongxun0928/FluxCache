@@ -29,6 +29,12 @@ struct FileInfo {
   uint64_t file_version = 0;
 };
 
+/// Directory entry returned by ListDirectory.
+struct DirEntry {
+  std::string name;
+  FileInfo info;
+};
+
 enum class OpenMode {
   kReadOnly,
   kWriteOnly,

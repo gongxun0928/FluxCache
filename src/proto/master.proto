@@ -16,6 +16,13 @@ service MasterService {
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
   rpc GetHashRing(GetHashRingRequest) returns (GetHashRingResponse);
   rpc SubmitPrewarm(SubmitPrewarmRequest) returns (SubmitPrewarmResponse);
+
+  // Directory and namespace operations.
+  rpc Mkdir(MkdirRequest) returns (MkdirResponse);
+  rpc Rmdir(RmdirRequest) returns (RmdirResponse);
+  rpc ListDir(ListDirRequest) returns (ListDirResponse);
+  rpc Rename(RenameRequest) returns (RenameResponse);
+  rpc Stat(StatRequest) returns (StatResponse);
 }
 
 message GetFileInfoRequest {
@@ -91,6 +98,52 @@ message SubmitPrewarmResponse {}
 message GetHashRingResponse {
   uint64 ring_version = 1;
   repeated WorkerEndpoint workers = 2;
+}
+
+// --- Directory and namespace operations ---
+
+message MkdirRequest {
+  string path = 1;
+}
+
+message MkdirResponse {
+  FileInfo file_info = 1;
+}
+
+message RmdirRequest {
+  string path = 1;
+}
+
+message RmdirResponse {}
+
+message ListDirRequest {
+  string path = 1;
+}
+
+message DirEntry {
+  string name = 1;
+  uint64 inode_id = 2;
+  FileInfo file_info = 3;
+}
+
+message ListDirResponse {
+  repeated DirEntry entries = 1;
+}
+
+message RenameRequest {
+  string src_path = 1;
+  string dst_path = 2;
+}
+
+message RenameResponse {}
+
+message StatRequest {
+  string path = 1;
+}
+
+message StatResponse {
+  FileInfo file_info = 1;
+  uint64 inode_id = 2;
 }
 
 // --- Raft Journal Entries (P4-02 Master HA) ---

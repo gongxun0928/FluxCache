@@ -6,20 +6,14 @@
 #include "common/status_or.h"
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fluxcache {
 
 /// FluxCache C++ SDK for application developers.
 ///
-/// MVP supports file-level operations: Create, Open, Read, Write, Stat, Delete.
+/// Supports file-level and directory-level operations.
 /// Errors are returned via Status/StatusOr, no exceptions.
-///
-/// NOT supported in MVP (namespace APIs, to be added later):
-/// - Rename
-/// - List
-/// - Mkdir
-/// - Rmdir
-/// - Exists
 ///
 /// PIMPL: no gRPC/protobuf in this header.
 class FluxCacheSDK {
@@ -47,6 +41,24 @@ class FluxCacheSDK {
 
   /// Get file metadata. Returns NotFound if path does not exist.
   StatusOr<FileInfo> Stat(const std::string& path);
+
+  /// Create directory at path. Returns AlreadyExists if path exists.
+  Status Mkdir(const std::string& path);
+
+  /// Remove empty directory at path. Returns NotFound if not found,
+  /// FailedPrecondition if directory is not empty.
+  Status Rmdir(const std::string& path);
+
+  /// List directory contents. Returns vector of DirEntry.
+  /// Returns NotFound if path does not exist or is not a directory.
+  StatusOr<std::vector<DirEntry>> ListDirectory(const std::string& path);
+
+  /// Rename src_path to dst_path. Overwrites dst if it exists and is a file
+  /// or empty directory. Returns NotFound if src does not exist.
+  Status Rename(const std::string& src_path, const std::string& dst_path);
+
+  /// Check if path exists. Does not distinguish files from directories.
+  bool Exists(const std::string& path);
 
  private:
   struct Impl;

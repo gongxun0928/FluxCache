@@ -6,7 +6,8 @@
 
 namespace fluxcache {
 
-void FakeUfs::AddFile(const std::string& path, uint64_t size, int64_t mtime_ms) {
+void FakeUfs::AddFile(const std::string &path, uint64_t size,
+                      int64_t mtime_ms) {
   FileStatus fs;
   fs.exists = true;
   fs.is_directory = false;
@@ -16,8 +17,22 @@ void FakeUfs::AddFile(const std::string& path, uint64_t size, int64_t mtime_ms) 
   (*files_)[path] = std::move(fs);
 }
 
-void FakeUfs::AddFileWithContent(const std::string& path,
-                                 const std::string& content, int64_t mtime_ms) {
+void FakeUfs::AddDirectory(const std::string &path, int64_t mtime_ms) {
+  if (path.empty() || path == "/") {
+    return;
+  }
+
+  FileStatus fs;
+  fs.exists = true;
+  fs.is_directory = true;
+  fs.size = 0;
+  fs.mtime_ms = mtime_ms;
+  fs.path = path;
+  (*files_)[path] = std::move(fs);
+}
+
+void FakeUfs::AddFileWithContent(const std::string &path,
+                                 const std::string &content, int64_t mtime_ms) {
   AddFile(path, static_cast<uint64_t>(content.size()), mtime_ms);
   (*content_)[path] = content;
 }
@@ -32,8 +47,8 @@ std::unique_ptr<UFS> FakeUfs::Clone() const {
   return clone;
 }
 
-Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
-                     std::string* out) {
+Status FakeUfs::Read(const std::string &path, uint64_t offset, uint64_t size,
+                     std::string *out) {
   if (!out) return Status::InvalidArgument(nullptr);
   if (read_fail_ && read_fail_->load()) {
     return Status::IOError("FakeUfs: Read failed (injected)");
@@ -42,7 +57,7 @@ Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
   if (it == content_->end()) {
     return Status::NotFound("FakeUfs: no content for path");
   }
-  const std::string& data = it->second;
+  const std::string &data = it->second;
   if (read_count_) read_count_->fetch_add(1);
   if (offset >= data.size()) {
     out->clear();
@@ -53,21 +68,22 @@ Status FakeUfs::Read(const std::string& path, uint64_t offset, uint64_t size,
   return Status::OK();
 }
 
-Status FakeUfs::Write(const std::string& path, uint64_t offset,
-                     std::string_view data) {
+Status FakeUfs::Write(const std::string &path, uint64_t offset,
+                      std::string_view data) {
   if (write_fail_) {
     return Status::IOError("FakeUfs: Write failed (injected)");
   }
   if (data.empty()) return Status::OK();
 
-  // Ensure file exists in files_ (CreateFile flow may add file without content).
+  // Ensure file exists in files_ (CreateFile flow may add file without
+  // content).
   auto fit = files_->find(path);
   if (fit == files_->end()) {
     AddFile(path, 0, 0);
     fit = files_->find(path);
   }
 
-  std::string& content = (*content_)[path];
+  std::string &content = (*content_)[path];
   size_t required = offset + data.size();
   if (content.size() < required) {
     content.resize(required, '\0');
@@ -80,7 +96,7 @@ Status FakeUfs::Write(const std::string& path, uint64_t offset,
   return Status::OK();
 }
 
-Status FakeUfs::GetStatus(const std::string& path, FileStatus* status) {
+Status FakeUfs::GetStatus(const std::string &path, FileStatus *status) {
   if (!status) return Status::InvalidArgument(nullptr);
   *status = FileStatus{};
   status->path = path;
@@ -97,23 +113,28 @@ Status FakeUfs::GetStatus(const std::string& path, FileStatus* status) {
   return Status::NotFound();
 }
 
-Status FakeUfs::List(const std::string& path,
-                     std::vector<FileStatus>* entries) {
+Status FakeUfs::List(const std::string &path,
+                     std::vector<FileStatus> *entries) {
   if (!entries) return Status::InvalidArgument(nullptr);
   entries->clear();
   std::string prefix = path.empty() || path == "/" ? "" : path + "/";
-  for (const auto& [p, fs] : *files_) {
+  for (const auto &[p, fs] : *files_) {
     if (prefix.empty()) {
       if (p.find('/') == std::string::npos) {
         entries->push_back(fs);
       }
-    } else if (p.size() > prefix.size() && p.compare(0, prefix.size(), prefix) == 0) {
+    } else if (p.size() > prefix.size() &&
+               p.compare(0, prefix.size(), prefix) == 0) {
       std::string rel = p.substr(prefix.size());
       size_t slash = rel.find('/');
-      std::string name = slash == std::string::npos ? rel : rel.substr(0, slash);
+      std::string name =
+          slash == std::string::npos ? rel : rel.substr(0, slash);
       bool found = false;
-      for (const auto& e : *entries) {
-        if (e.path == name) { found = true; break; }
+      for (const auto &e : *entries) {
+        if (e.path == name) {
+          found = true;
+          break;
+        }
       }
       if (!found) {
         FileStatus e;
@@ -129,20 +150,36 @@ Status FakeUfs::List(const std::string& path,
   return Status::OK();
 }
 
-Status FakeUfs::Delete(const std::string& path) {
+Status FakeUfs::Delete(const std::string &path) {
   (void)path;
   return Status::InvalidArgument("FakeUfs::Delete not implemented");
 }
 
-Status FakeUfs::Rename(const std::string& src, const std::string& dst) {
+Status FakeUfs::Rename(const std::string &src, const std::string &dst) {
   (void)src;
   (void)dst;
   return Status::InvalidArgument("FakeUfs::Rename not implemented");
 }
 
-Status FakeUfs::Mkdirs(const std::string& path) {
-  (void)path;
-  return Status::InvalidArgument("FakeUfs::Mkdirs not implemented");
+Status FakeUfs::Mkdirs(const std::string &path) {
+  if (path.empty() || path == "/") return Status::OK();
+
+  size_t start = 0;
+  while (start < path.size() && path[start] == '/') ++start;
+  std::string current;
+  while (start < path.size()) {
+    size_t slash = path.find('/', start);
+    std::string part = slash == std::string::npos
+                           ? path.substr(start)
+                           : path.substr(start, slash - start);
+    if (!part.empty()) {
+      current = current.empty() ? part : current + "/" + part;
+      AddDirectory(current, 0);
+    }
+    if (slash == std::string::npos) break;
+    start = slash + 1;
+  }
+  return Status::OK();
 }
 
 }  // namespace fluxcache

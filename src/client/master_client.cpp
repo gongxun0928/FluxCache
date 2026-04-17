@@ -1,9 +1,12 @@
 #include "client/master_client.h"
+
+#include <grpcpp/client_context.h>
+
+#include <chrono>
+
 #include "common/metrics/metrics_registry.h"
 #include "master.grpc.pb.h"
 #include "worker/registration_util.h"
-#include <chrono>
-#include <grpcpp/client_context.h>
 
 namespace fluxcache {
 
@@ -40,7 +43,8 @@ bool MasterClient::TryFollowLeaderHint(const grpc::Status& status) {
 namespace {
 
 StatusOr<fluxcache::proto::GetHashRingResponse> DoGetHashRing(
-    fluxcache::ChannelPool* pool, const std::string& address, int deadline_sec) {
+    fluxcache::ChannelPool* pool, const std::string& address,
+    int deadline_sec) {
   auto channel = pool->GetChannel(address);
   if (!channel) {
     return fluxcache::Status::Unavailable("failed to get channel for master");
@@ -77,7 +81,8 @@ StatusOr<proto::GetHashRingResponse> MasterClient::GetHashRing() {
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
   auto result = ExecuteWithRetry<proto::GetHashRingResponse>(
-      p, [this, deadline]() {
+      p,
+      [this, deadline]() {
         return DoGetHashRing(pool_, GetMasterAddress(), deadline);
       },
       metrics_, "master");
@@ -134,7 +139,8 @@ StatusOr<proto::GetFileInfoResponse> MasterClient::GetFileInfo(
   RetryPolicy p = retry_policy_;
   p.is_idempotent = true;
   auto result = ExecuteWithRetry<proto::GetFileInfoResponse>(
-      p, [this, path, deadline]() {
+      p,
+      [this, path, deadline]() {
         return DoGetFileInfo(pool_, GetMasterAddress(), deadline, path);
       },
       metrics_, "master");
@@ -230,6 +236,9 @@ Status MasterClient::CompleteFile(uint64_t inode_id, uint64_t size) {
   }
   if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
     return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
   }
   return Status::IOError(grpc_status.error_message().c_str());
 }
@@ -433,6 +442,228 @@ StatusOr<uint64_t> MasterClient::RegisterWorker(const std::string& host,
   }
   if (circuit_breaker_) circuit_breaker_->RecordSuccess();
   return resp.worker_id();
+}
+
+StatusOr<proto::MkdirResponse> MasterClient::Mkdir(const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
+  proto::MkdirRequest req;
+  req.set_path(path);
+  proto::MkdirResponse resp;
+  auto invoke = [&](const std::string& address) {
+    auto channel = pool_->GetChannel(address);
+    if (!channel) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                          "failed to get channel for master");
+    }
+    fluxcache::proto::MasterService::Stub stub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                     std::chrono::seconds(deadline));
+    return stub.Mkdir(&ctx, req, &resp);
+  };
+
+  auto grpc_status = invoke(GetMasterAddress());
+  if (!grpc_status.ok() && TryFollowLeaderHint(grpc_status)) {
+    grpc_status = invoke(GetMasterAddress());
+  }
+
+  if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
+    return resp;
+  }
+
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::ALREADY_EXISTS) {
+    return Status::AlreadyExists(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
+Status MasterClient::Rmdir(const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
+  proto::RmdirRequest req;
+  req.set_path(path);
+  proto::RmdirResponse resp;
+  auto invoke = [&](const std::string& address) {
+    auto channel = pool_->GetChannel(address);
+    if (!channel) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                          "failed to get channel for master");
+    }
+    fluxcache::proto::MasterService::Stub stub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                     std::chrono::seconds(deadline));
+    return stub.Rmdir(&ctx, req, &resp);
+  };
+
+  auto grpc_status = invoke(GetMasterAddress());
+  if (!grpc_status.ok() && TryFollowLeaderHint(grpc_status)) {
+    grpc_status = invoke(GetMasterAddress());
+  }
+
+  if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
+    return Status::OK();
+  }
+
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::DirectoryNotEmpty(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
+StatusOr<proto::ListDirResponse> MasterClient::ListDir(
+    const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterRead);
+  proto::ListDirRequest req;
+  req.set_path(path);
+  proto::ListDirResponse resp;
+  auto invoke = [&](const std::string& address) {
+    auto channel = pool_->GetChannel(address);
+    if (!channel) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                          "failed to get channel for master");
+    }
+    fluxcache::proto::MasterService::Stub stub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                     std::chrono::seconds(deadline));
+    return stub.ListDir(&ctx, req, &resp);
+  };
+
+  auto grpc_status = invoke(GetMasterAddress());
+  if (!grpc_status.ok() && TryFollowLeaderHint(grpc_status)) {
+    grpc_status = invoke(GetMasterAddress());
+  }
+
+  if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
+    return resp;
+  }
+
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
+Status MasterClient::Rename(const std::string& src_path,
+                            const std::string& dst_path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterWrite);
+  proto::RenameRequest req;
+  req.set_src_path(src_path);
+  req.set_dst_path(dst_path);
+  proto::RenameResponse resp;
+  auto invoke = [&](const std::string& address) {
+    auto channel = pool_->GetChannel(address);
+    if (!channel) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                          "failed to get channel for master");
+    }
+    fluxcache::proto::MasterService::Stub stub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                     std::chrono::seconds(deadline));
+    return stub.Rename(&ctx, req, &resp);
+  };
+
+  auto grpc_status = invoke(GetMasterAddress());
+  if (!grpc_status.ok() && TryFollowLeaderHint(grpc_status)) {
+    grpc_status = invoke(GetMasterAddress());
+  }
+
+  if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
+    return Status::OK();
+  }
+
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
+}
+
+StatusOr<proto::StatResponse> MasterClient::Stat(const std::string& path) {
+  if (circuit_breaker_ && !circuit_breaker_->AllowRequest()) {
+    return Status::Unavailable("circuit breaker open");
+  }
+  int deadline = resilience_config_.TimeoutSec(OpType::kMasterRead);
+  proto::StatRequest req;
+  req.set_path(path);
+  proto::StatResponse resp;
+  auto invoke = [&](const std::string& address) {
+    auto channel = pool_->GetChannel(address);
+    if (!channel) {
+      return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                          "failed to get channel for master");
+    }
+    fluxcache::proto::MasterService::Stub stub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                     std::chrono::seconds(deadline));
+    return stub.Stat(&ctx, req, &resp);
+  };
+
+  auto grpc_status = invoke(GetMasterAddress());
+  if (!grpc_status.ok() && TryFollowLeaderHint(grpc_status)) {
+    grpc_status = invoke(GetMasterAddress());
+  }
+
+  if (grpc_status.ok()) {
+    if (circuit_breaker_) circuit_breaker_->RecordSuccess();
+    return resp;
+  }
+
+  if (circuit_breaker_) circuit_breaker_->RecordFailure();
+  if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+      grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+    return Status::Unavailable(grpc_status.error_message().c_str());
+  }
+  if (grpc_status.error_code() == grpc::StatusCode::NOT_FOUND) {
+    return Status::NotFound(grpc_status.error_message().c_str());
+  }
+  return Status::IOError(grpc_status.error_message().c_str());
 }
 
 }  // namespace fluxcache

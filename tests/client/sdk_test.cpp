@@ -2,6 +2,14 @@
 // Uses only SDK public API for Create/Open/Read/Write/Stat/Delete.
 // Setup uses FluxCacheClient for Mount/RegisterWorker (test infrastructure).
 
+#include <gtest/gtest.h>
+
+#include <chrono>
+#include <cstring>
+#include <filesystem>
+#include <string>
+#include <thread>
+
 #include "client/fluxcache_client.h"
 #include "client/sdk/fluxcache_sdk.h"
 #include "client/sdk/types.h"
@@ -11,20 +19,13 @@
 #include "ufs/ufs_factory.h"
 #include "worker/worker_server.h"
 
-#include <chrono>
-#include <cstring>
-#include <filesystem>
-#include <gtest/gtest.h>
-#include <string>
-#include <thread>
-
 namespace fluxcache {
 
 class SdkTest : public ::testing::Test {
-protected:
+ protected:
   static constexpr uint16_t kMasterPort = 29620;
   static constexpr uint16_t kWorkerPort = 29621;
-  static constexpr size_t kPageSize = 1024 * 1024; // 1MB
+  static constexpr size_t kPageSize = 1024 * 1024;  // 1MB
 
   void SetUp() override {
     namespace fs = std::filesystem;
@@ -55,10 +56,8 @@ protected:
   }
 
   void TearDown() override {
-    if (worker_server_)
-      worker_server_->Shutdown();
-    if (master_server_)
-      master_server_->Shutdown();
+    if (worker_server_) worker_server_->Shutdown();
+    if (master_server_) master_server_->Shutdown();
     try {
       std::filesystem::remove_all(std::filesystem::temp_directory_path() /
                                   "fluxcache_sdk_test");
@@ -314,4 +313,175 @@ TEST_F(SdkTest, LocalCacheDisabledReadsWork) {
   handle->Close();
 }
 
-} // namespace fluxcache
+// ---- Namespace operation tests (P5-02) ----
+
+TEST_F(SdkTest, MkdirCreatesDirectory) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-mkdir", std::move(fake));
+
+  SetupMountAndWorker("sdk-mkdir");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  // Create directory
+  auto mkdir_status = sdk->Mkdir("/mnt/mydir");
+  ASSERT_TRUE(mkdir_status.ok()) << mkdir_status.message();
+
+  // Stat should show it as directory
+  auto stat_result = sdk->Stat("/mnt/mydir");
+  ASSERT_TRUE(stat_result.ok()) << stat_result.status().message();
+  EXPECT_TRUE(stat_result.value().is_directory);
+}
+
+TEST_F(SdkTest, MkdirAlreadyExistsReturnsAlreadyExists) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-mkdir2", std::move(fake));
+
+  SetupMountAndWorker("sdk-mkdir2");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  ASSERT_TRUE(sdk->Mkdir("/mnt/mydir").ok());
+
+  auto mkdir_status = sdk->Mkdir("/mnt/mydir");
+  EXPECT_FALSE(mkdir_status.ok());
+  EXPECT_EQ(mkdir_status.code(), StatusCode::kAlreadyExists);
+}
+
+TEST_F(SdkTest, RmdirRemovesEmptyDirectory) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-rmdir", std::move(fake));
+
+  SetupMountAndWorker("sdk-rmdir");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  ASSERT_TRUE(sdk->Mkdir("/mnt/emptydir").ok());
+
+  // Remove empty directory
+  auto rmdir_status = sdk->Rmdir("/mnt/emptydir");
+  EXPECT_TRUE(rmdir_status.ok()) << rmdir_status.message();
+
+  // Directory should be gone
+  auto stat_result = sdk->Stat("/mnt/emptydir");
+  EXPECT_FALSE(stat_result.ok());
+  EXPECT_EQ(stat_result.status().code(), StatusCode::kNotFound);
+}
+
+TEST_F(SdkTest, RmdirNonEmptyDirectoryReturnsDirectoryNotEmpty) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-rmdir-nonempty", std::move(fake));
+
+  SetupMountAndWorker("sdk-rmdir-nonempty");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  ASSERT_TRUE(sdk->Mkdir("/mnt/nonemptydir").ok());
+  ASSERT_TRUE(sdk->Create("/mnt/nonemptydir/file.txt").ok());
+
+  auto rmdir_status = sdk->Rmdir("/mnt/nonemptydir");
+  EXPECT_FALSE(rmdir_status.ok());
+  EXPECT_EQ(rmdir_status.code(), StatusCode::kDirectoryNotEmpty);
+  EXPECT_NE(rmdir_status.message().find("directory not empty"),
+            std::string::npos);
+}
+
+TEST_F(SdkTest, ListDirectoryReturnsEntries) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-listdir", std::move(fake));
+
+  SetupMountAndWorker("sdk-listdir");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  // Create directory and files
+  ASSERT_TRUE(sdk->Mkdir("/mnt/dir1").ok());
+  ASSERT_TRUE(sdk->Create("/mnt/dir1/file1.txt").ok());
+  ASSERT_TRUE(sdk->Create("/mnt/dir1/file2.txt").ok());
+
+  // List directory
+  auto list_result = sdk->ListDirectory("/mnt/dir1");
+  ASSERT_TRUE(list_result.ok()) << list_result.status().message();
+  const auto &entries = list_result.value();
+  EXPECT_EQ(entries.size(), 2u);
+
+  // Check entry names
+  std::vector<std::string> names;
+  for (const auto &e : entries) {
+    names.push_back(e.name);
+    EXPECT_GT(e.info.inode_id, 0u);
+    EXPECT_FALSE(e.info.is_directory);
+  }
+  EXPECT_NE(std::find(names.begin(), names.end(), "file1.txt"), names.end());
+  EXPECT_NE(std::find(names.begin(), names.end(), "file2.txt"), names.end());
+}
+
+TEST_F(SdkTest, RenameMovesFile) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-rename", std::move(fake));
+
+  SetupMountAndWorker("sdk-rename");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  // Create and write file
+  ASSERT_TRUE(sdk->Create("/mnt/original.txt").ok());
+  auto open_result = sdk->Open("/mnt/original.txt", OpenMode::kWriteOnly);
+  ASSERT_TRUE(open_result.ok()) << open_result.status().message();
+  auto handle = std::move(open_result.value());
+  ASSERT_TRUE(handle->Write(0, "rename test").ok());
+  handle->Close();
+
+  // Rename
+  auto rename_status = sdk->Rename("/mnt/original.txt", "/mnt/renamed.txt");
+  EXPECT_TRUE(rename_status.ok()) << rename_status.message();
+
+  // Old path should be gone
+  EXPECT_FALSE(sdk->Exists("/mnt/original.txt"));
+
+  // New path should exist
+  EXPECT_TRUE(sdk->Exists("/mnt/renamed.txt"));
+}
+
+TEST_F(SdkTest, ExistsReturnsCorrectly) {
+  auto fake = std::make_unique<FakeUfs>();
+  fake->AddFile("placeholder", 0, 0);
+  RegisterFakeUfsForTest("sdk-exists", std::move(fake));
+
+  SetupMountAndWorker("sdk-exists");
+
+  auto sdk_result = FluxCacheSDK::Create(MakeSdkConfig());
+  ASSERT_TRUE(sdk_result.ok()) << sdk_result.status().message();
+  auto sdk = std::move(sdk_result.value());
+
+  // Non-existent path
+  EXPECT_FALSE(sdk->Exists("/mnt/no_such_file"));
+
+  // Create file, then exists
+  ASSERT_TRUE(sdk->Create("/mnt/exists_test.dat").ok());
+  EXPECT_TRUE(sdk->Exists("/mnt/exists_test.dat"));
+
+  // Directory exists
+  ASSERT_TRUE(sdk->Mkdir("/mnt/exists_dir").ok());
+  EXPECT_TRUE(sdk->Exists("/mnt/exists_dir"));
+}
+
+}  // namespace fluxcache
