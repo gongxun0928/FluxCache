@@ -4,44 +4,44 @@
 
 FluxCache 是一个基于 **C++20** 的分布式缓存文件系统原型，参考 Alluxio 和 GooseFS，但当前明确采用“先收敛 MVP，再逐层扩展”的建设方式。
 
-当前项目的第一阶段只围绕这条主线展开：
+项目已从窄 MVP 扩展到覆盖 Phase A–K 的大部分能力：
 
-- 单 `Master`
-- 单 `Worker`
-- `LocalFS` 作为首个 UFS
-- 先只做 `Memory` Page 缓存
-- 写路径采用 `write-through`
-- Phase 1 使用 `mtime` 做缓存版本校验
+- 单 `Master`（RocksDB 持久化元数据；HA Raft 已暂停）
+- 一个或多个 `Worker`，支持 Memory / SSD / HDD 分层
+- UFS：`LocalFS`（首个）、`S3/MinIO`（必需）、`HDFS`（stub / 可选）
+- Page 缓存默认 `write-through`，并具备 write-back 淘汰等扩展路径
+- 缓存新鲜度由 Master 维护的 `file_version` 校验（已替代早期 `mtime` 方案）
 
 ## 当前状态
 
-> 当前重点是冻结 Phase 1 契约，并让第一条端到端读写链路具备可稳定验证的实现目标。
+> 当前重点：收尾 Phase K 残余（pjdfstest 实测基线），再选择下一方向——加固现有架构，或冻结更大范围的重规划（见未合入的 draft PR #1）。
+
+状态真相源：[plan/issue-status.md](./plan/issue-status.md)。活跃批次：[plan/active-batch.md](./plan/active-batch.md)。
 
 因此这个仓库目前代表的是：
 
-- 一个相对稳定的架构方向
-- 一套正在快速收敛的实现路线图
-- 而不是“README 里出现的能力都已经稳定可用”
+- 相对稳定的架构方向，且 Phase A–J / Phase K 大部分已实现
+- 不是“已生产加固”的声明（HA 暂停；POSIX 属性落盘 / 完整 truncate 仍有缺口）
 
 ## 当前目标架构
 
 ```text
-Client
+Client (CLI / SDK / 可选 FUSE)
   |  gRPC
   v
 Single Master (MountTable + InodeTree + WorkerManager + HashRing)
   |  gRPC
   v
-Single Worker (Memory Tier + PageStore)
+Worker(s) (Memory/SSD/HDD Tier + PageStore + MetaStore)
   |
   v
-Under File System (LocalFS first)
+Under File System (LocalFS / S3 / HDFS stub)
 ```
 
 ### 组件职责
 
 - `Client`
-  - 向 Master 查询文件元数据
+  - 向 Master 查询文件元数据与命名空间操作
   - 本地计算 `BlockId`
   - 将读写请求路由到 Worker
 - `Master`
@@ -60,27 +60,27 @@ Under File System (LocalFS first)
 - `InodeId` 是文件身份。
 - `BlockId = (InodeId, BlockIndex)` 是路由身份。
 - `PageId = {BlockId, page_index}` 是缓存身份。
-- Phase 1 的 Master 不保存 `Block -> Worker` 位置表。
-- Phase 1 的 Worker 不负责文件路径元数据。
-- Phase 1 使用 `ufs_mtime_ms` 做缓存新鲜度校验。
+- Master 不保存 `Block -> Worker` 位置表；Client 通过 HashRing 路由。
+- Worker 不负责文件路径元数据。
+- 缓存新鲜度使用 Master 的 `file_version`（在 CompleteFile / 写路径上递增）。
 
-## Phase 1 读路径
+## 读路径
 
 1. Client 调用 `GetFileInfo`。
-2. Master 返回 `inode_id`、`size`、`block_size`、`ufs_mtime_ms`、`ring_version`、`workers`、`ufs_uri`、`ufs_path`。
+2. Master 返回 `inode_id`、`size`、`block_size`、`file_version`、`ring_version`、`workers`、`ufs_uri`、`ufs_path`。
 3. Client 本地计算 `BlockId` 和 `page_indices`。
-4. Client 向 Worker 发送 `ReadPages`。
+4. Client 向 Worker 发送带 `expected_file_version` 的 `ReadPages`。
 5. Worker 先查 `PageStore`。
-6. 命中失败或版本过期时，Worker 从 UFS 读取并回填缓存。
+6. 未命中或版本不匹配时，Worker 从 UFS 读取并回填缓存。
 
-## Phase 1 写路径
+## 写路径
 
 1. Client 调用 `CreateFile` 或 `GetFileInfo`。
 2. Client 本地计算目标 block/page。
 3. Client 向 Worker 发送 `WritePages`。
-4. Worker 先写 UFS。
+4. Worker 先写 UFS（默认 write-through）。
 5. UFS 写入成功后再更新缓存。
-6. Client 调用 `CompleteFile`，让 Master 更新元数据。
+6. Client 调用 `CompleteFile`，Master 更新 size 并递增 `file_version`。
 
 ## 路线图
 
@@ -98,19 +98,15 @@ Under File System (LocalFS first)
 - `Phase H`：后端扩展（`S3` / `HDFS`）
 - `Phase I`：HA 与弹性
 - `Phase J`：性能、可观测与质量轨道
+- `Phase K`：生产就绪增强（命名空间 RPC、Docker e2e、pjdfstest）
 
-### 这些能力仍属于规划中
+### 仍开放或能力受限的项
 
-以下内容不再视为“当前稳定核心”，而是 roadmap 项：
-
-- SSD / HDD 多层缓存
-- MetaStore 恢复
-- FUSE
-- 文件级 MVP 之外的 SDK 能力
-- S3 / HDFS 后端
-- HA Journal / Raft（已暂停；原型代码由 `FLUXCACHE_ENABLE_RAFT=OFF` 控制，默认不编译）
-- 高级降级与弹性策略
-- 生产级可观测性
+- **P5-05** pjdfstest：脚本与预期基线文档已有；缺实测报告与 Compose 集成
+- FUSE 属性落盘 / 完整 truncate（已知 POSIX 缺口）
+- HDFS UFS 真实驱动（无 libhdfs 时为 stub）
+- Master HA / Raft（`P4-02` 已暂停；默认 `FLUXCACHE_ENABLE_RAFT=OFF`）
+- 五层架构重规划草案（open draft PR #1，未合入）
 
 ## 构建与测试
 

@@ -6,9 +6,13 @@ Implement full POSIX file system operations in the FUSE layer by calling the C++
 
 ## Current State
 
-- FUSE uses high-level API (`fuse_operations` struct, FUSE_USE_VERSION 31)
-- Implemented: getattr, open, release, read, write, create
-- All returning ENOTSUP: readdir, mkdir, rmdir, unlink, rename, truncate, chmod, chown, utimens, symlink, link, readlink, setxattr, getxattr, listxattr, removexattr
+- **Status (2026-07-23):** `completed` via PR #2 for Batch 1 + compatibility stubs
+- Implemented: getattr, open, release, read, write, create, readdir, mkdir, rmdir, unlink, rename
+- Compatibility stubs (documented limits):
+  - `truncate`: only `size==0` path accepts; non-zero returns `ENOTSUP`
+  - `chmod` / `chown` / `utimens`: return 0 but do not persist
+- Still out of scope / unsupported: symlink, link, xattr, special files, locks
+- See [docs/pjdfstest-baseline.md](../docs/pjdfstest-baseline.md)
 
 ## Acceptance Criteria
 

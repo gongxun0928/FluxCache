@@ -6,10 +6,9 @@ Extend C++ SDK from MVP (Open/Read/Write/Close/Create/Complete) to full namespac
 
 ## Current State
 
-- SDK supports: `Create`, `Open`, `Delete`, `Stat` (on FluxCacheSDK)
-- FileHandle supports: `Read`, `Write`, `Stat`, `Close`
-- Header explicitly documents: "NOT supported in MVP (namespace APIs, to be added later)"
-- Master RPCs will be available from P5-01
+- **Status (2026-07-23):** `completed` via PR #2
+- SDK supports namespace ops: `Mkdir`, `Rmdir`, `ListDirectory`, `Rename`, `Exists`
+- Covered by `tests/client/sdk_test.cpp`
 
 ## Acceptance Criteria
 

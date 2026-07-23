@@ -4,44 +4,44 @@
 
 FluxCache is a **C++20 distributed cache file system prototype** inspired by Alluxio and GooseFS.
 
-The project is intentionally being built around a narrow MVP first:
+The project grew from a narrow MVP and now covers most of Phase A–K:
 
-- single `Master`
-- single `Worker`
-- `LocalFS` as the first UFS
-- page cache in `Memory` first
-- `write-through` writes
-- `mtime`-based cache validation in Phase 1
+- single `Master` (RocksDB-backed metadata; HA Raft suspended)
+- one or more `Worker`s with Memory / SSD / HDD tiers
+- UFS backends: `LocalFS` (first), `S3/MinIO` (required), `HDFS` (stub / optional)
+- page cache with write-through and optional write-back eviction paths
+- cache validation via Master-maintained `file_version` (replaced earlier `mtime` checks)
 
 ## Status
 
-> Current focus: freeze the Phase 1 contract and make the first end-to-end read/write path verifiable.
+> Current focus: close Phase K residuals (pjdfstest baseline), then choose the next direction — harden the current architecture, or freeze a larger replan (see open draft PR #1).
+
+Issue status truth source: [plan/issue-status.md](./plan/issue-status.md). Active batch: [plan/active-batch.md](./plan/active-batch.md).
 
 The repository should be read as:
 
-- a stable **architecture direction**
-- an actively evolving **implementation roadmap**
-- not a claim that all planned features are already production ready
+- a stable **architecture direction** with a largely implemented roadmap through Phase J / most of Phase K
+- not a claim that the system is production-hardened (HA paused; POSIX attrs / full truncate still limited)
 
 ## Current Architecture Target
 
 ```text
-Client
+Client (CLI / SDK / optional FUSE)
   |  gRPC
   v
 Single Master (MountTable + InodeTree + WorkerManager + HashRing)
   |  gRPC
   v
-Single Worker (Memory Tier + PageStore)
+Worker(s) (Memory/SSD/HDD Tier + PageStore + MetaStore)
   |
   v
-Under File System (LocalFS first)
+Under File System (LocalFS / S3 / HDFS stub)
 ```
 
 ### Core Responsibilities
 
 - `Client`
-  - asks Master for file metadata
+  - asks Master for file metadata and namespace ops
   - computes `BlockId` locally
   - routes reads/writes to Worker
 - `Master`
@@ -60,27 +60,27 @@ Under File System (LocalFS first)
 - `InodeId` is the file identity.
 - `BlockId = (InodeId, BlockIndex)` is the routing identity.
 - `PageId = {BlockId, page_index}` is the cache identity.
-- Master does **not** store `Block -> Worker` locations in Phase 1.
+- Master does **not** store `Block -> Worker` locations; Client routes via HashRing.
 - Worker does **not** own file path metadata.
-- Cache freshness is checked with `ufs_mtime_ms` in Phase 1.
+- Cache freshness is checked with Master `file_version` (incremented on CompleteFile / writes).
 
-## Read Path (Phase 1)
+## Read Path
 
 1. Client calls `GetFileInfo`.
-2. Master returns `inode_id`, `size`, `block_size`, `ufs_mtime_ms`, `ring_version`, `workers`, `ufs_uri`, and `ufs_path`.
+2. Master returns `inode_id`, `size`, `block_size`, `file_version`, `ring_version`, `workers`, `ufs_uri`, and `ufs_path`.
 3. Client computes `BlockId` and `page_indices` locally.
-4. Client sends `ReadPages` to Worker.
+4. Client sends `ReadPages` to Worker with `expected_file_version`.
 5. Worker checks `PageStore`.
-6. On miss or stale cache, Worker reads from UFS and refills cache.
+6. On miss or version mismatch, Worker reads from UFS and refills cache.
 
-## Write Path (Phase 1)
+## Write Path
 
 1. Client calls `CreateFile` or `GetFileInfo`.
 2. Client computes target blocks/pages locally.
 3. Client sends `WritePages` to Worker.
-4. Worker writes to UFS first.
+4. Worker writes to UFS first (write-through default).
 5. Worker updates cache only after UFS write succeeds.
-6. Client calls `CompleteFile` so Master updates metadata.
+6. Client calls `CompleteFile` so Master updates size and increments `file_version`.
 
 ## Roadmap
 
@@ -98,19 +98,15 @@ High-level phases:
 - `Phase H`: backend expansion (`S3`, `HDFS`)
 - `Phase I`: HA and resilience
 - `Phase J`: performance, observability, and quality track
+- `Phase K`: production-readiness extras (namespace RPCs, Docker e2e, pjdfstest)
 
-### Planned, Not Core Yet
+### Still open or limited
 
-These are still roadmap items, not current stable core claims:
-
-- SSD/HDD tiers
-- MetaStore-based worker recovery
-- FUSE access
-- C++ SDK beyond file-path MVP
-- S3 / HDFS backends
-- HA journal / Raft (suspended; prototype behind `FLUXCACHE_ENABLE_RAFT=OFF`)
-- advanced resilience and degradation
-- production observability
+- **P5-05** pjdfstest: scripts + expected baseline docs exist; measured report and Compose integration pending
+- FUSE attribute persistence / full truncate (known POSIX gaps)
+- HDFS UFS real driver (stub unless libhdfs enabled)
+- Master HA / Raft (`P4-02` suspended; `FLUXCACHE_ENABLE_RAFT=OFF` by default)
+- Draft five-layer architecture replan (open PR #1; not merged)
 
 ## Build and Test
 
