@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfluxcache_master.a CMakeFiles/fluxcache_master.dir/hash_ring_manager.cpp.o CMakeFiles/fluxcache_master.dir/inode_store.cpp.o CMakeFiles/fluxcache_master.dir/inode_tree.cpp.o CMakeFiles/fluxcache_master.dir/master_server.cpp.o CMakeFiles/fluxcache_master.dir/master_service_impl.cpp.o CMakeFiles/fluxcache_master.dir/mount_table.cpp.o CMakeFiles/fluxcache_master.dir/path_resolver.cpp.o CMakeFiles/fluxcache_master.dir/worker_manager.cpp.o
-/usr/bin/ranlib libfluxcache_master.a

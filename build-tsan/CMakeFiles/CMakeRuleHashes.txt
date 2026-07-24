@@ -1,4 +1,0 @@
-# Hashes of file build rules.
-f1bfda76e6c2bcd4bffad04894e448ad src/proto/common.pb.cc
-8ff2a92f323d1a94eb72db5ce31297cb src/proto/master.pb.cc
-4ca2dea5538233ca5211ae53d1b45f8e src/proto/worker.pb.cc

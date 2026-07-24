@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfluxcache_proto.a CMakeFiles/fluxcache_proto.dir/common.pb.cc.o CMakeFiles/fluxcache_proto.dir/master.pb.cc.o CMakeFiles/fluxcache_proto.dir/master.grpc.pb.cc.o CMakeFiles/fluxcache_proto.dir/worker.pb.cc.o CMakeFiles/fluxcache_proto.dir/worker.grpc.pb.cc.o
-/usr/bin/ranlib libfluxcache_proto.a

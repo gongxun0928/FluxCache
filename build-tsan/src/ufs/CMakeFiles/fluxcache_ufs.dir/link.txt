@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfluxcache_ufs.a CMakeFiles/fluxcache_ufs.dir/fake_ufs.cpp.o CMakeFiles/fluxcache_ufs.dir/local_ufs.cpp.o CMakeFiles/fluxcache_ufs.dir/ufs_factory.cpp.o
-/usr/bin/ranlib libfluxcache_ufs.a

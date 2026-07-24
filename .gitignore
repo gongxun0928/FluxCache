@@ -8,6 +8,15 @@ out
 bin
 compile_commands.json
 
+# Local runtime data created when running master/worker from repo root
+# (Master default db_path is ./fluxcache_meta; Raft snapshots use db_path + "_snapshots")
+fluxcache_meta/
+fluxcache_meta.bak/
+fluxcache_meta.incoming/
+fluxcache_meta_snapshots/
+fluxcache_worker/
+fluxcache_ufs/
+
 # CMake-generated executables (in-tree or stray; prefer out-of-source: build/)
 fluxcache-master
 fluxcache-worker
