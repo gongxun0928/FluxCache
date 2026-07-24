@@ -6,11 +6,10 @@ Expose existing InodeTree directory operations as Master RPC endpoints. Add Mkdi
 
 ## Current State
 
-- `InodeTree` already implements: `CreateDirectory()`, `DeleteInode()`, `ListDirectory()`, `LookupPath()`, `ApplyCreateDirectory()`, `ApplyDeleteInode()`
-- `master.proto` has 7 RPCs (GetFileInfo/CreateFile/CompleteFile/DeleteFile/Mount/Unmount/ListMounts) — no directory operations
-- `common.proto` `FileInfo` has `is_directory` field
-- Journal entries have `CreateDirectoryOp`
-- **No Rename method exists in InodeTree**
+- **Status (2026-07-23):** `completed` via PR #2
+- Master exposes `Mkdir` / `Rmdir` / `ListDir` / `Rename` / `Stat`
+- `InodeTree::RenameInode()` covers same-dir, cross-dir, and overwrite cases
+- Client wrappers and master unit tests landed with the same PR
 
 ## Acceptance Criteria
 

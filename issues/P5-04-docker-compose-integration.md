@@ -6,11 +6,11 @@ Create a Docker Compose integration test environment that launches MinIO (S3-com
 
 ## Current State
 
-- All 55+ tests use FakeUfs — S3UFS (337 lines, minio-cpp) has never been tested against a real S3 backend
-- No Docker configuration exists in the project
-- S3UFS reads credentials from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` or `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` env vars
-- UFS URI format: `s3://host:port/bucket`
-- CLI tool supports: mount, unmount, ls-mounts, read, write, stat
+- **Status (2026-07-23):** `completed` via PR #2 (infra landed)
+- `docker/Dockerfile`, `docker/docker-compose.yml`, `docker/run_e2e_test.sh`, `docker/config/config.yaml` exist
+- Services: minio, minio-init, fluxcache-master, fluxcache-worker, test-runner
+- Re-run recommendation when Docker is available:
+  `cd docker && docker compose up --build && docker compose run test-runner`
 
 ## Acceptance Criteria
 

@@ -1,10 +1,12 @@
 # FluxCache 开发计划（按 AI Coding 可交付性重构）
 
-> Status: Planned
+> Status: Partially superseded by implementation progress through Phase K (2026-07-23).  
+> Keep as historical phase map; live status is `plan/issue-status.md`.  
+> Note: cache validation is now `file_version`, not Phase-1 `mtime`.
 
 ## Goal
 
-围绕 `单 Master + 单 Worker + LocalFS + write-through + mtime 校验` 的 MVP 主线，按“契约冻结 → 元数据闭环 → 数据面闭环 → 恢复 → 扩展”推进，避免在核心链路稳定前过早承诺高级能力。
+围绕已落地的 `Master + Worker(s) + LocalFS/S3 + write-through + file_version` 主线，按“契约冻结 → 元数据闭环 → 数据面闭环 → 恢复 → 扩展 → 生产就绪”推进；下一活跃批次见 `plan/active-batch.md`。
 
 ## 需求来源
 

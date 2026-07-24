@@ -162,8 +162,8 @@ created ──→ suspended  (方案风险过高，暂停待重新评估)
 
 | Issue | 标题 | 分级 | 依赖 | 状态 | PR | 备注 |
 |---|---|---|---|---|---|---|
-| P5-01 | Master proto 命名空间 RPC 扩展 | P1 | 无 | in_progress | | @Dev 执行；Mkdir/Rmdir/ListDir/Stat wire-up，Rename 需新逻辑 |
-| P5-02 | C++ SDK 完整命名空间操作 | P1 | P5-01 | created | | |
-| P5-03 | FUSE 完整 POSIX 操作 | P1 | P5-02 | created | | |
-| P5-04 | Docker-Compose S3 集成测试环境 | P1 | 无 | in_progress | | @Architect 执行；docker/ 目录已创建 |
-| P5-05 | pjdfstest POSIX 兼容性基线评估 | P2 | P5-03, P5-04 | created | | |
+| P5-01 | Master proto 命名空间 RPC 扩展 | P1 | 无 | completed | [#2](https://github.com/gongxun0928/fluxcache/pull/2) | 2026-04-13：Mkdir/Rmdir/ListDir/Rename/Stat + InodeTree Rename + 单测 |
+| P5-02 | C++ SDK 完整命名空间操作 | P1 | P5-01 | completed | [#2](https://github.com/gongxun0928/fluxcache/pull/2) | 2026-04-13：Mkdir/Rmdir/ListDirectory/Rename/Exists + sdk_test |
+| P5-03 | FUSE 完整 POSIX 操作 | P1 | P5-02 | completed | [#2](https://github.com/gongxun0928/fluxcache/pull/2) | 2026-04-13：Batch1 目录/unlink/rename 完成；truncate 仅 size=0 stub，chmod/chown/utimens 为兼容 no-op（见 docs/pjdfstest-baseline.md） |
+| P5-04 | Docker-Compose S3 集成测试环境 | P1 | 无 | completed | [#2](https://github.com/gongxun0928/fluxcache/pull/2) | 2026-04-13：docker/Dockerfile + compose + run_e2e_test.sh；建议在有 Docker 的环境复跑 e2e |
+| P5-05 | pjdfstest POSIX 兼容性基线评估 | P2 | P5-03, P5-04 | created | | 脚手架已有（scripts/run_pjdfstest.sh + docs/pjdfstest-baseline.md）；缺 Docker 集成与实测 pass/fail 报告 |

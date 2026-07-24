@@ -217,6 +217,10 @@ flowchart TD
 
 目标：补齐 FUSE/SDK 完整能力、引入 Docker 集成测试环境、评估 POSIX 兼容性。
 
+> 状态以 [plan/issue-status.md](../plan/issue-status.md) 为准。  
+> 截至 2026-07-23：P5-01～P5-04 已随 PR #2 合入为 `completed`；P5-05 仍为 `created`（脚本与预期基线文档已有，缺实测报告与 Compose 集成）。  
+> P5-03 残余：完整 truncate、权限/时间戳落盘仍为已知限制（见 [docs/pjdfstest-baseline.md](../docs/pjdfstest-baseline.md)）。
+
 | Issue | 标题 | 依赖 | 分级 |
 |---|---|---|---|
 | [P5-01](./P5-01-master-proto-namespace.md) | Master proto 命名空间 RPC 扩展 | 无 | P1 |

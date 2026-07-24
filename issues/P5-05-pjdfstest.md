@@ -6,9 +6,10 @@ Integrate the pjdfstest test suite against FluxCache's FUSE mount point to measu
 
 ## Current State
 
-- No POSIX compliance testing exists
-- FUSE mount point supports basic file I/O (Phase K will add full ops)
-- pjdfstest (https://github.com/pjd/pjdfstest) is a POSIX filesystem test suite
+- **Status (2026-07-23):** still `created` (scaffolding only)
+- Host runner: `scripts/run_pjdfstest.sh`
+- Expected-results doc: `docs/pjdfstest-baseline.md` (estimated ~55% pass; not a measured run)
+- **Missing for acceptance:** Docker Compose integration, real FUSE mount run, and recorded pass/fail report under `build/pjdfstest-reports/`
 
 ## Acceptance Criteria
 
